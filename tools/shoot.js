@@ -27,6 +27,26 @@ const PLANS = {
     ['t_approach', (s) => s.beat >= 157.6], ['t_complete', (s) => s.state === 'complete'],
   ], timeout: 100000 },
   audio: { url: '?autoplay=1&start=0&debug=1', shots: [['a_mid', (s) => s.beat >= 40], ['a_end', (s) => s.state === 'complete']], timeout: 100000 },
+  menu: { url: '?debug=1', shots: [
+    ['menu_1', (s) => s.state === 'menu'],
+    ['menu_2', (s) => s.state === 'menu', { key: 'ArrowRight' }],
+  ], timeout: 20000 },
+  tour2: { url: '?level=hormuz&autoplay=1&noaudio=1&mute=1&start=0&debug=1', shots: [
+    ['h_start', (s) => s.beat >= 1.3], ['h_warpowers', (s) => s.beat >= 24.4], ['h_hearing', (s) => s.beat >= 50.2],
+    ['h_catapult', (s) => s.beat >= 64.45], ['h_mines', (s) => s.beat >= 70.35], ['h_mineline', (s) => s.beat >= 72.9],
+    ['h_un', (s) => s.beat >= 80.4], ['h_gap', (s) => s.beat >= 84.35], ['h_jcpoa', (s) => s.beat >= 105.3],
+    ['h_drones', (s) => s.beat >= 116.4], ['h_ceasefire', (s) => s.beat >= 120.9], ['h_nato', (s) => s.beat >= 124.6],
+    ['h_tankers', (s) => s.beat >= 146.5], ['h_approach', (s) => s.beat >= 168.6], ['h_complete', (s) => s.state === 'complete'],
+  ], timeout: 110000 },
+  ending2: { url: '?level=hormuz&autoplay=1&noaudio=1&mute=1&start=166&debug=1', shots: [
+    ['t_enter', (s) => s.ending && s.ending.phase === 'enter' && s.ending.trumpIn > 0.45],
+    ['t_stamp1', (s) => s.ending && s.ending.phase === 'stamp1' && s.ending.stamp1 >= 1],
+    ['t_stamp2', (s) => s.ending && s.ending.phase === 'stamp2' && s.ending.stamp2 >= 1 && s.ending.arm === 0],
+    ['t_barrier', (s) => s.ending && s.ending.phase === 'barrier' && s.ending.arm >= 1],
+    ['t_queue1', (s) => s.ending && s.ending.tolls >= 1],
+    ['t_queue3', (s) => s.ending && s.ending.tolls >= 3],
+    ['t_complete', (s) => s.state === 'complete'],
+  ], timeout: 40000 },
   // practice mode: flags appear, autoplay is switched off so the run dies, then restarts at the last flag
   practice: { url: '?autoplay=1&noaudio=1&mute=1&start=0&debug=1&practice=1', shots: [
     ['p_cp1', (s) => s.beat >= 9.3],
@@ -71,7 +91,9 @@ class CDP {
       const [name, cond, action] = plan.shots[idx];
       if (cond(s)) {
         if (action && action.key) {
-          const code = 'Key' + action.key.toUpperCase(), vk = action.key.toUpperCase().charCodeAt(0);
+          const special = { ArrowRight: 39, ArrowLeft: 37, Space: 32 };
+          const code = special[action.key] ? action.key : 'Key' + action.key.toUpperCase();
+          const vk = special[action.key] || action.key.toUpperCase().charCodeAt(0);
           await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: action.key, code, windowsVirtualKeyCode: vk });
           await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: action.key, code, windowsVirtualKeyCode: vk });
           await sleep(60);

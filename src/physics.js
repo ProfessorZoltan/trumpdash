@@ -1,6 +1,6 @@
 // Trump Dash - deterministic physics (shared by the game and the Node verifier).
 (function (root) {
-  const C = root.TD_CONST || require('./constants.js').TD_CONST;
+  const C = root.TD_CONST;
   const HW = C.PLAYER_W / 2, PH = C.PLAYER_H;
 
   function makeState(beat) {
@@ -28,6 +28,20 @@
     const dx = cx - px, dy = cy - py;
     return dx * dx + dy * dy <= r * r;
   }
+  // Drone centre y at a given beat (shared with the renderer so hitbox and picture agree)
+  function droneCY(o, beat) {
+    return o.floorY - (o.hBase + o.amp * Math.sin((2 * Math.PI * (beat - o.phase)) / o.period));
+  }
+  // Is there floor under any part of the hitbox [pl, pr]?
+  function overGround(level, pl, pr) {
+    const gaps = level.gaps;
+    for (let i = 0; i < gaps.length; i++) {
+      const g = gaps[i];
+      if (g.l > pr) break;
+      if (g.l < pl && pr < g.r) return false;
+    }
+    return true;
+  }
 
   // Advance one fixed step. `held` = jump button currently down.
   function step(st, level, held, dt) {
@@ -38,15 +52,22 @@
     st.t += dt;
     const prevY = st.y;
     st.x = st.t * C.SPEED;
+    const pl = st.x - HW, pr = st.x + HW;
     if (!st.onGround) {
       st.vy = Math.min(st.vy + C.GRAVITY * dt, C.MAX_FALL);
       st.y += st.vy * dt;
       st.airT += dt;
       st.rot += ((Math.PI * 2) / C.AIR_T) * dt;
-      if (st.y >= C.GROUND_Y) land(st, C.GROUND_Y, null);
+      if (st.y >= C.GROUND_Y) {
+        if (overGround(level, pl, pr)) land(st, C.GROUND_Y, null);
+        else if (st.y > C.GROUND_Y + 16) { die(st, { t: 'water' }); return; }
+      }
+    } else if (st.ground === null && !overGround(level, pl, pr)) {
+      // ran off the edge of the floor into water
+      st.onGround = false; st.airT = 0; st.vy = 0;
     }
 
-    const pl = st.x - HW, pr = st.x + HW, pb = st.y, pt = st.y - PH;
+    const pb = st.y, pt = st.y - PH;
     while (st.oi < objs.length && objs[st.oi].xmax < pl - 80) st.oi++;
     for (let i = st.oi; i < objs.length; i++) {
       const o = objs[i];
@@ -73,10 +94,18 @@
             o.used = true; launch(st, C.ORB_VY, 'orb', o);
           }
           break;
-        case 'barrel':
-          if (!o.got && circleHit(o.cx, o.cy, 20, pl, pr, pt, pb)) { o.got = true; emit(st, 'barrel', o); }
+        case 'mine':
+          if (circleHit(o.cx, o.cy, o.r, pl, pr, pt, pb)) { die(st, o); return; }
           break;
-        case 'truck':
+        case 'drone': {
+          const cy = droneCY(o, st.t / C.BEAT_SEC);
+          if (circleHit(o.cx, cy, o.r, pl, pr, pt, pb)) { die(st, o); return; }
+          break;
+        }
+        case 'coin':
+          if (!o.got && circleHit(o.cx, o.cy, 20, pl, pr, pt, pb)) { o.got = true; emit(st, 'coin', o); }
+          break;
+        case 'goal':
           if (st.x >= o.x) { st.finished = true; emit(st, 'finish', o); return; }
           break;
       }
@@ -90,9 +119,9 @@
   // Reset consumable objects at or after a world x (used for checkpoints/restarts)
   function resetObjects(level, fromX) {
     for (const o of level.objs) {
-      if (o.xmin >= fromX - 60) { if (o.t === 'orb') o.used = false; if (o.t === 'barrel') o.got = false; }
+      if (o.xmin >= fromX - 60) { if (o.t === 'orb') o.used = false; if (o.t === 'coin') o.got = false; }
     }
   }
 
-  root.TD_PHYSICS = { makeState, step, resetObjects };
-})(typeof module !== 'undefined' ? module.exports : window);
+  root.TD_PHYSICS = { makeState, step, resetObjects, droneCY, overGround };
+})(typeof window !== 'undefined' ? window : globalThis);

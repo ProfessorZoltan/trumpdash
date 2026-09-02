@@ -1,10 +1,21 @@
 # Trump Dash
 
-A parody rhythm platformer in the style of Geometry Dash. You run a pixel-art Trump from
-Washington, D.C. to Venezuela's Orinoco oil belt, jumping obstacles like **The Constitution**,
-**Congress**, the **Supreme Court**, **International Law**, the **Free Press** and a
-**Gag Order** ceiling. Reach the tanker truck marked **VENEZUELA**, climb in, watch the
-**U.S.A.** stamp slam over the name and then **TRUMP** stamp over that, and drive away.
+A parody rhythm platformer in the style of Geometry Dash, with two levels you pick from the
+main menu.
+
+**Level 1 — VENEZUELA (Hard, 128 BPM).** Run a pixel-art Trump from Washington, D.C. to
+Venezuela's Orinoco oil belt, jumping obstacles like **The Constitution**, **Congress**, the
+**Supreme Court**, **International Law**, the **Free Press** and a **Gag Order** ceiling. Reach the
+tanker truck marked **VENEZUELA**, climb in, watch **U.S.A.** stamp over the name and then
+**TRUMP** stamp over that, and drive away.
+
+**Level 2 — HORMUZ (Insane, 140 BPM).** From a golf round at Mar-a-Lago, through the Pentagon
+and off an aircraft carrier's catapult into the Gulf: water gaps between ship decks, floating
+naval mines, drones bobbing on the beat, the **War Powers Act**, **AUMF**, **Intel Briefing**,
+**Senate/House Hearing** columns, a **UN Security Council** wall (cleared with the **VETO** pad),
+a torn-up **JCPOA**, **NATO Article 5**, and **CEASEFIRE** ceilings. It ends at the Strait of
+Hormuz, where the sign gets stamped **CLOSED** and then **TRUMP TOLL**, the barrier drops, and
+tankers queue up to pay $1B each.
 
 Satire. Not affiliated with any person, government or oil company.
 
@@ -16,65 +27,65 @@ Open `index.html` through a local web server (browsers block the sprite sheet on
 python -m http.server 8765
 ```
 
-Then visit <http://localhost:8765/>.
+Then visit <http://localhost:8765/>. The repository is a static site, so it also deploys
+as-is on Vercel or GitHub Pages.
 
 | Key | Action |
 | --- | --- |
-| Space / ↑ / W / click / tap | Jump (hold to keep jumping, like Geometry Dash) |
+| ← → / 1 / 2 / click a card | Choose a level on the menu |
+| Space / ↑ / W / Enter / click / tap | Start, and jump (hold to keep jumping, like Geometry Dash) |
 | Esc | Pause |
 | R | Restart from the beginning |
-| P | Toggle practice mode (auto checkpoints every few bars) |
+| P | Toggle practice mode (auto checkpoints every few bars, all flags stay visible) |
 | M | Mute |
 | H | Show hitboxes |
 | A | Toggle autoplay (watch mode) |
 
 ## How the rhythm works
 
-Everything is derived from one number, `BPM = 128` in `src/constants.js`. The player moves
-at a constant 384 px/s, so one beat is exactly 180 px. Every obstacle in `src/level.js` is
-placed in **beats**, and the helper functions (`S` for spikes, `OVER` for blocks you jump
-over, `P` for platforms, `O` for the Pardon orb) position the geometry so that pressing
-exactly on the named beat puts the apex of the jump over the hazard.
+Every level declares its BPM and everything else derives from it in `src/constants.js`.
+The distance per beat is always 180 px, so a faster song simply scrolls faster and the
+obstacle geometry is identical between levels. Obstacles are placed in **beats** by the helper
+functions in `src/level.js` (`S` spikes, `MS` mines, `OVER` blocks you jump over, `P` platforms,
+`O` orbs, `GJ` water gaps), positioned so that pressing exactly on the named beat puts the apex
+of the jump over the hazard. Drones bob on a two-beat cycle and are highest exactly when an
+on-beat jump passes under them.
 
-The music is generated live with the Web Audio API (`src/audio.js`) on a 16th-note grid
-locked to the same clock. Every beat that requires a jump gets an accent (a bright pluck and
-a clap) so the track itself tells you when to press. Jumps within ±60 ms of the beat count as
-PERFECT, within ±120 ms as GOOD, and build the on-beat combo shown above the player.
+The music is generated live with the Web Audio API. `src/audio.js` owns the instruments and the
+16th-note scheduler; each level's file owns its arrangement. Every beat that requires a jump
+gets an accent (a bright pluck and a clap) so the track itself tells you when to press. Jumps
+within ±60 ms count as PERFECT, within ±120 ms as GOOD, and build the on-beat combo.
 
-Physics runs on the audio clock at 240 Hz, so the game stays deterministic and in sync even
-if the frame rate stutters.
-
-## Level
-
-| Bars | Section | What you meet |
-| --- | --- | --- |
-| 0–3 | Intro | White House, first spikes |
-| 4–11 | Verse | Spikes, The Constitution, the first Pardon orb |
-| 12–15 | Build | Congress columns (Senate, House) to hop across |
-| 16–23 | Drop | Executive Order pad over the Article I wall, International Law, Supreme Court, Gag Order |
-| 24–27 | Breakdown | Tariff zone, oil-barrel stairs |
-| 28–35 | Drop 2 | Free Press, second Gag Order, double spikes |
-| 36–39 | Finale | Orinoco oil belt, PDVSA tanks, the truck |
+Physics runs on the audio clock at 240 Hz, so the game stays deterministic and in sync even if
+the frame rate stutters.
 
 ## Tools
 
-* `node tools/verify_level.js` simulates a player pressing exactly on every jump beat, checks
-  the level is completable, and prints the timing window (ms early / late) of every jump.
-* `node tools/shoot.js ending|tour|audio [outDir]` drives headless Chrome over the DevTools
-  protocol (server must be running on port 8765) and captures screenshots of key moments.
+* `node tools/verify_level.js [levelId]` simulates a player pressing exactly on every jump beat
+  for each level, checks the level is completable, prints the timing window (ms early / late)
+  of every jump, and confirms a restart from every practice checkpoint still finishes.
+* `node tools/shoot.js <plan> [outDir]` drives headless Chrome over the DevTools protocol
+  (server must be running on port 8765) and captures screenshots. Plans: `menu`, `tour`,
+  `ending`, `practice`, `audio` (Level 1) and `tour2`, `ending2` (Level 2). Set `PORT=` to run
+  several at once.
 
-Debug URL parameters: `?autoplay=1`, `?start=<beat>`, `?noaudio=1`, `?mute=1`, `?debug=1`.
+Debug URL parameters: `?level=hormuz`, `?autoplay=1`, `?start=<beat>`, `?noaudio=1`, `?mute=1`,
+`?practice=1`, `?debug=1`.
 
 ## Files
 
 ```
-index.html          page shell
-style.css           layout
-src/constants.js    BPM, speed, physics constants
-src/sprites.js      frame table for resources/sprite_sheet.png
-src/level.js        level design in beats
-src/physics.js      deterministic player physics + collisions
-src/audio.js        procedural music and sound effects
-src/render.js       canvas rendering, HUD, menus, truck + stamps
-src/game.js         game loop, input, state machine, ending cutscene
+index.html               page shell
+style.css                layout
+src/constants.js         physics constants, setTempo(bpm)
+src/sprites.js           frame table for resources/sprite_sheet.png
+src/level.js             level builder (beats -> objects), checkpoint rule
+src/levels/venezuela.js  Level 1: layout, palettes, music, death messages
+src/levels/hormuz.js     Level 2: layout, palettes, music, death messages
+src/physics.js           deterministic player physics + collisions (spikes, blocks, mines, drones, water)
+src/audio.js             instruments, scheduler and sound effects
+src/render.js            canvas rendering, HUD, level-select menu, truck and toll-booth endings
+src/game.js              game loop, input, state machine, ending cutscenes
+tools/verify_level.js    completability + timing-window verifier
+tools/shoot.js           headless screenshot harness
 ```

@@ -18,4 +18,4 @@
     ],
   };
   root.TD_SPRITES = { FRAMES, SHEET: 'resources/sprite_sheet.png', RUN_SCALE: 72 / 308 };
-})(typeof module !== 'undefined' ? module.exports : window);
+})(typeof window !== 'undefined' ? window : globalThis);

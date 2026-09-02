@@ -1,15 +1,17 @@
-// Trump Dash - game loop, input, state machine
+// Trump Dash - game loop, input, state machine, level select, ending cutscenes
 (function () {
   const C = window.TD_CONST, PHYS = window.TD_PHYSICS, LV = window.TD_LEVEL, R = window.TD_RENDER, SPR = window.TD_SPRITES;
+  const LEVELS = window.TD_LEVELS;
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
   const audio = new window.TD_AUDIO.Engine();
-  const LS = { best: 'trumpdash.best', wins: 'trumpdash.wins', practice: 'trumpdash.practice', muted: 'trumpdash.muted' };
+  const LS = { practice: 'trumpdash.practice', muted: 'trumpdash.muted', best: (id) => `trumpdash.best.${id}`, wins: (id) => `trumpdash.wins.${id}` };
   const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, String(v)); } catch (e) { /* ignore */ } };
 
   const G = {
     state: 'loading',
+    levels: LEVELS, levelIdx: 0,
     level: null, st: null, attempt: 0, attemptX: null,
     practice: lsGet(LS.practice, '0') === '1',
     muted: lsGet(LS.muted, '0') === '1',
@@ -17,43 +19,33 @@
     held: false, beat: 0, beatPulse: 0, time: 0, camX: -C.PLAYER_X, camLock: null,
     particles: [], floaters: [], shake: 0,
     stats: null, deathMsg: null, deadAt: 0, checkpoint: 0, checkpoints: [], lastCpCheck: -1,
-    ending: null, constitutionsStepped: 0,
-    best: parseFloat(lsGet(LS.best, '0')) || 0, wins: parseInt(lsGet(LS.wins, '0'), 10) || 0,
+    ending: null, best: {}, wins: {}, lastError: null,
   };
+  for (const def of LEVELS) {
+    G.best[def.id] = parseFloat(lsGet(LS.best(def.id), def.id === 'venezuela' ? lsGet('trumpdash.best', '0') : '0')) || 0;
+    G.wins[def.id] = parseInt(lsGet(LS.wins(def.id), def.id === 'venezuela' ? lsGet('trumpdash.wins', '0') : '0'), 10) || 0;
+  }
   audio.muted = G.muted;
-  // Debug/automation URL params: ?autoplay=1&start=<beat>&noaudio=1&mute=1
+  // Debug/automation URL params: ?level=<id>&autoplay=1&start=<beat>&noaudio=1&mute=1&practice=1&debug=1
   const Q = new URLSearchParams(location.search);
   G.autoplay = Q.get('autoplay') === '1';
   G.noAudio = Q.get('noaudio') === '1';
   if (Q.get('mute') === '1') { G.muted = true; audio.muted = true; }
   if (Q.has('practice')) G.practice = Q.get('practice') === '1';
+  if (Q.has('level')) { const i = LEVELS.findIndex((d) => d.id === Q.get('level')); if (i >= 0) G.levelIdx = i; }
 
-  const DEATH_MSGS = {
-    spike: ['Impeached!', "Tariff'd!", 'Sad!', 'Fake jump!', 'Covfefe.', 'Bigly missed.', 'Off the beat, off the cliff.', 'Very unfair. Rigged spike.'],
-    constitution: ['Blocked by the Constitution!', 'The Constitution held. For now.', 'Article II does not say that.'],
-    wall: ['Article I is a big, beautiful wall.', 'Congress has the power of the purse. Ouch.'],
-    congress: ['Congress said no. (This time.)', 'Lost the vote. Sad!'],
-    court: ['Overruled, 9-0.', 'The Supreme Court declined to hear your jump.'],
-    law: ['International law happened.', 'The UN sent a strongly worded spike.'],
-    press: ['Caught by the free press!', 'Front page: TRUMP TRIPS.'],
-    gag: ['Violated the gag order!', 'You were told: no jumping.'],
-    barrels: ['Slipped on Venezuelan crude.', 'That oil was not yours yet.'],
-    plain: ['Blocked!'],
-  };
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-
-  function resetStats() { G.stats = { jumps: 0, perfect: 0, good: 0, barrels: 0, combo: 0, maxCombo: 0 }; }
+  function resetStats() { G.stats = { jumps: 0, perfect: 0, good: 0, coins: 0, combo: 0, maxCombo: 0, extra: 0 }; }
 
   // ---------- flow ----------
-  function startGame() {
+  function startGame(def) {
     if (!G.noAudio) audio.init();
     audio.resume();
     audio.setMuted(G.muted);
-    G.level = LV.buildLevel();
+    G.level = LV.buildLevel(def);
     audio.setLevel(G.level);
     G.attempt = 0;
     G.checkpoint = 0; G.checkpoints = []; G.lastCpCheck = -1;
-    G.constitutionsStepped = 0;
     resetStats();
     startAttempt(0);
   }
@@ -61,8 +53,8 @@
     G.attempt++;
     G.st = PHYS.makeState(beat);
     PHYS.resetObjects(G.level, beat * C.BEAT_PX);
-    G.stats.barrels = G.level.objs.reduce((n, o) => n + (o.t === 'barrel' && o.got ? 1 : 0), 0);
-    if (beat === 0) G.stats.combo = 0;
+    G.stats.coins = G.level.objs.reduce((n, o) => n + (o.t === 'coin' && o.got ? 1 : 0), 0);
+    if (beat === 0) { G.stats.combo = 0; G.stats.extra = 0; }
     G.state = 'playing';
     G.held = false;
     G.particles.length = 0; G.floaters.length = 0;
@@ -72,34 +64,45 @@
     audio.startSong(beat, 0.6);
   }
   function onDeath() {
-    const st = G.st;
+    const st = G.st, def = G.level.def;
     G.state = 'dead';
     G.deadAt = G.time;
     audio.stopSong(true);
-    audio.sfxDie();
-    G.shake = 14;
     const o = st.deathBy;
-    const key = o ? (o.t === 'block' ? o.skin : 'spike') : 'spike';
-    G.deathMsg = pick(DEATH_MSGS[key] || DEATH_MSGS.plain);
+    const key = !o ? 'spike' : o.t === 'block' ? o.skin : o.t;
+    if (key === 'mine') audio.sfxBoom(); else if (key === 'water') audio.sfxSplash(); else audio.sfxDie();
+    G.shake = key === 'mine' ? 22 : 14;
+    G.deathMsg = pick(def.deathMsgs[key] || def.deathMsgs.plain || ['Blocked!']);
     G.stats.combo = 0;
+    const colors = key === 'water' ? ['#8fd3ff', '#ffffff', '#2d8fa8', '#cfefff'] : ['#ffd400', '#0033a0', '#c8102e', '#ffffff', '#ff9d3f'];
     for (let i = 0; i < 46; i++) {
       const a = Math.random() * Math.PI * 2, sp = 120 + Math.random() * 380;
-      G.particles.push({ x: st.x, y: st.y - 30, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 150, life: 0.7 + Math.random() * 0.5, maxLife: 1.1, size: 3 + Math.random() * 4, color: pick(['#ffd400', '#0033a0', '#c8102e', '#ffffff', '#ff9d3f']), gravity: 900 });
+      G.particles.push({ x: st.x, y: st.y - 30, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 150, life: 0.7 + Math.random() * 0.5, maxLife: 1.1, size: 3 + Math.random() * 4, color: pick(colors), gravity: 900 });
     }
     const pct = Math.min(100, (st.x / G.level.lengthPx) * 100);
-    if (pct > G.best) { G.best = pct; lsSet(LS.best, pct.toFixed(1)); }
+    if (pct > (G.best[def.id] || 0)) { G.best[def.id] = pct; lsSet(LS.best(def.id), pct.toFixed(1)); }
   }
   function onFinish() {
-    const st = G.st;
+    const st = G.st, def = G.level.def, type = def.ending.type;
     G.state = 'ending';
-    G.camLock = G.level.lengthPx - 520;
+    G.camLock = G.level.lengthPx - def.ending.camOffset;
     G.camX = G.camLock;
     audio.stopSong(true);
-    audio.endingPad();
-    audio.engineStart();
+    audio.endingPad(type === 'toll');
+    if (type === 'truck') audio.engineStart();
     G.attemptX = null;
-    G.ending = { phase: 'enter', t0: G.time, truckX0: st.x, truckX: st.x, wheel: 0, stamp1: 0, stamp2: 0, trumpIn: 0.0001, banner: null, bannerT: 0, exhaustT: 0 };
-    G.best = 100; lsSet(LS.best, '100');
+    G.ending = {
+      type, phase: 'enter', t0: G.time, goalX: st.x, truckX0: st.x, truckX: st.x, wheel: 0,
+      stamp1: 0, stamp2: 0, subSign: 0, arm: 0, trumpIn: 0.0001, banner: null, bannerT: 0, bannerT0: 0, exhaustT: 0,
+      tankers: [], tolls: 0, nextTankerAt: 0,
+    };
+    G.best[def.id] = 100; lsSet(LS.best(def.id), '100');
+  }
+  function completeLevel() {
+    const def = G.level.def;
+    G.state = 'complete';
+    G.wins[def.id] = (G.wins[def.id] || 0) + 1;
+    lsSet(LS.wins(def.id), G.wins[def.id]);
   }
   function togglePause() {
     if (G.state === 'playing') { G.state = 'paused'; G.pausedBeat = G.st.t / C.BEAT_SEC; audio.stopSong(true); }
@@ -122,8 +125,7 @@
     return { beat: best, offMs: (beat - best) * C.BEAT_SEC * 1000 };
   }
   function judge(ev) {
-    const beat = ev.t / C.BEAT_SEC;
-    const n = nearestJumpBeat(beat);
+    const n = nearestJumpBeat(ev.t / C.BEAT_SEC);
     if (Math.abs(n.offMs) > 260) return; // a free jump, not tied to an obstacle
     G.stats.jumps++;
     let label, color;
@@ -135,16 +137,17 @@
     G.floaters.push({ text: label, x: ev.x, y: ev.y - 90, t0: G.time, dur: 0.7, color, size: 18 });
   }
   function handleEvents(st) {
+    const def = G.level.def;
     for (const ev of st.events) {
       switch (ev.type) {
         case 'jump': audio.sfxJump(); judge(ev); break;
         case 'orb': audio.sfxOrb(); judge(ev); burst(ev.x, ev.y - 30, 12, '#ffd400'); break;
-        case 'pad': audio.sfxPad(); burst(ev.x, ev.y, 16, '#ffd400'); G.floaters.push({ text: 'EXECUTIVE ORDER!', x: ev.x, y: ev.y - 110, t0: G.time, dur: 0.9, color: '#ffd400', size: 16 }); break;
-        case 'barrel': audio.sfxBarrel(); G.stats.barrels++; burst(ev.obj.cx, ev.obj.cy, 10, '#ffd400'); G.floaters.push({ text: '+1 BARREL', x: ev.obj.cx, y: ev.obj.cy - 24, t0: G.time, dur: 0.7, color: '#fff', size: 14 }); break;
+        case 'pad': audio.sfxPad(); burst(ev.x, ev.y, 16, '#ffd400'); G.floaters.push({ text: ev.obj.label + '!', x: ev.x, y: ev.y - 110, t0: G.time, dur: 0.9, color: '#ffd400', size: 16 }); break;
+        case 'coin': audio.sfxCoin(); G.stats.coins++; burst(ev.obj.cx, ev.obj.cy, 10, '#ffd400'); G.floaters.push({ text: `+1 ${def.collectible.label.replace(/s$/, '').toUpperCase()}`, x: ev.obj.cx, y: ev.obj.cy - 24, t0: G.time, dur: 0.7, color: '#fff', size: 14 }); break;
         case 'land':
           for (let i = 0; i < 4; i++) G.particles.push({ x: ev.x + (Math.random() - 0.5) * 20, y: ev.y, vx: (Math.random() - 0.5) * 80 - 60, vy: -40 - Math.random() * 60, life: 0.3, maxLife: 0.3, size: 2 + Math.random() * 2, color: 'rgba(255,255,255,0.7)', gravity: 300 });
           if (ev.obj && (ev.obj.skin === 'constitution' || ev.obj.skin === 'wall')) {
-            G.constitutionsStepped++;
+            G.stats.extra++;
             G.floaters.push({ text: 'STEPPED ON THE CONSTITUTION', x: ev.x, y: ev.y - 100, t0: G.time, dur: 1.0, color: '#ffe9a0', size: 14 });
           }
           break;
@@ -173,47 +176,100 @@
     audio.sfxCheckpoint();
   }
 
-  // ---------- update ----------
+  // ---------- ending cutscenes ----------
+  function burstInk(x, y, color) {
+    for (let i = 0; i < 24; i++) {
+      const a = Math.random() * Math.PI * 2, sp = 80 + Math.random() * 260;
+      G.particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.6 + Math.random() * 0.4, maxLife: 1, size: 2 + Math.random() * 4, color, gravity: 500 });
+    }
+  }
   function updateEnding(dt) {
     const e = G.ending;
     const t = G.time - e.t0; // seconds since the current phase began (real time, frame-rate independent)
     const next = (phase) => { e.phase = phase; e.t0 = G.time; };
+    const banner = (txt) => { e.banner = txt; e.bannerT0 = G.time; };
     if (e.banner) e.bannerT = G.time - e.bannerT0;
+    if (e.type === 'truck') {
+      switch (e.phase) {
+        case 'enter':
+          e.trumpIn = Math.min(1, t / 0.8);
+          if (t >= 1.3) next('stamp1');
+          break;
+        case 'stamp1':
+          e.stamp1 = Math.min(1, t / 0.32);
+          if (t >= 0.32 && !e.hit1) { e.hit1 = true; audio.sfxStamp(); G.shake = 16; burstInk(e.truckX - 174, C.GROUND_Y - 72, '#c8102e'); banner('U.S.A.'); }
+          if (t >= 1.5) next('stamp2');
+          break;
+        case 'stamp2':
+          e.stamp2 = Math.min(1, t / 0.32);
+          if (t >= 0.32 && !e.hit2) { e.hit2 = true; audio.sfxStamp(); G.shake = 20; burstInk(e.truckX - 174, C.GROUND_Y - 72, '#ffd400'); banner('TRUMP'); }
+          if (t >= 1.7) { next('drive'); audio.engineRev(3.6); audio.fanfare(); banner('OIL SECURED'); }
+          break;
+        case 'drive': {
+          const a = 240, vmax = 560, ta = vmax / a;
+          const dist = t < ta ? 0.5 * a * t * t : 0.5 * a * ta * ta + vmax * (t - ta);
+          e.truckX = e.truckX0 + dist;
+          e.wheel = dist / 20;
+          e.exhaustT += dt;
+          if (e.exhaustT > 0.06) {
+            e.exhaustT = 0;
+            G.particles.push({ x: e.truckX + 6, y: C.GROUND_Y - 196, vx: -60 - Math.random() * 60, vy: -60 - Math.random() * 40, life: 0.9, maxLife: 0.9, size: 6 + Math.random() * 8, color: 'rgba(90,90,100,0.6)', gravity: -60 });
+          }
+          if (t >= 3.6) { next('done'); completeLevel(); }
+          break;
+        }
+      }
+      return;
+    }
+    // ---- toll booth ending ----
+    const signX = e.goalX + 25, signY = C.GROUND_Y - 232;
     switch (e.phase) {
       case 'enter':
-        e.trumpIn = Math.min(1, t / 0.8);
-        if (t >= 1.3) next('stamp1');
+        e.trumpIn = Math.min(1, t / 0.9);
+        if (t >= 1.2) next('stamp1');
         break;
       case 'stamp1':
         e.stamp1 = Math.min(1, t / 0.32);
-        if (t >= 0.32 && !e.hit1) { e.hit1 = true; audio.sfxStamp(); G.shake = 16; burstInk(e, '#c8102e'); e.banner = 'U.S.A.'; e.bannerT0 = G.time; }
+        if (t >= 0.32 && !e.hit1) { e.hit1 = true; audio.sfxStamp(); G.shake = 16; burstInk(signX, signY, '#c8102e'); banner('CLOSED'); }
         if (t >= 1.5) next('stamp2');
         break;
       case 'stamp2':
         e.stamp2 = Math.min(1, t / 0.32);
-        if (t >= 0.32 && !e.hit2) { e.hit2 = true; audio.sfxStamp(); G.shake = 20; burstInk(e, '#ffd400'); e.banner = 'TRUMP'; e.bannerT0 = G.time; }
-        if (t >= 1.7) { next('drive'); audio.engineRev(3.6); audio.fanfare(); e.banner = 'OIL SECURED'; e.bannerT0 = G.time; }
+        if (t >= 0.32 && !e.hit2) { e.hit2 = true; audio.sfxStamp(); G.shake = 20; burstInk(signX, signY, '#ffd400'); banner('TRUMP TOLL'); }
+        if (t >= 0.9) e.subSign = Math.min(1, (t - 0.9) / 0.3);
+        if (t >= 1.9) next('barrier');
         break;
-      case 'drive': {
-        const a = 240, vmax = 560, ta = vmax / a;
-        const dist = t < ta ? 0.5 * a * t * t : 0.5 * a * ta * ta + vmax * (t - ta);
-        e.truckX = e.truckX0 + dist;
-        e.wheel = dist / 20;
-        e.exhaustT += dt;
-        if (e.exhaustT > 0.06) {
-          e.exhaustT = 0;
-          G.particles.push({ x: e.truckX + 6, y: C.GROUND_Y - 196, vx: -60 - Math.random() * 60, vy: -60 - Math.random() * 40, life: 0.9, maxLife: 0.9, size: 6 + Math.random() * 8, color: 'rgba(90,90,100,0.6)', gravity: -60 });
-        }
-        if (t >= 3.6) { next('done'); G.state = 'complete'; G.wins++; lsSet(LS.wins, G.wins); }
+      case 'barrier': {
+        const p = Math.min(1, t / 0.55);
+        e.arm = 1 - Math.pow(1 - p, 2);
+        if (p >= 1 && !e.hitArm) { e.hitArm = true; audio.sfxClank(); G.shake = 10; banner('STRAIT CLOSED'); }
+        if (t >= 1.0) { next('queue'); e.nextTankerAt = 0; }
         break;
       }
-    }
-  }
-  function burstInk(e, color) {
-    const cx = e.truckX - 174, cy = C.GROUND_Y - 72;
-    for (let i = 0; i < 24; i++) {
-      const a = Math.random() * Math.PI * 2, sp = 80 + Math.random() * 260;
-      G.particles.push({ x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.6 + Math.random() * 0.4, maxLife: 1, size: 2 + Math.random() * 4, color, gravity: 500 });
+      case 'queue': {
+        const hulls = ['#7a1f1f', '#1b5e8a', '#2f6b3a'];
+        if (e.tankers.length < 3 && t >= e.nextTankerAt) {
+          const idx = e.tankers.length;
+          e.tankers.push({ x: e.goalX + 1400, target: e.goalX + 120 + idx * 228, hull: hulls[idx], moving: true, arrived: false, arrivedAt: 0 });
+          e.nextTankerAt = t + 1.25;
+        }
+        let allDone = e.tankers.length === 3;
+        for (const tk of e.tankers) {
+          if (tk.moving) {
+            const v = Math.min(520, (tk.x - tk.target) * 3 + 60);
+            tk.x = Math.max(tk.target, tk.x - v * dt);
+            if (tk.x <= tk.target + 0.5) { tk.moving = false; tk.arrivedAt = t; audio.sfxHorn(); }
+          } else if (!tk.arrived && t - tk.arrivedAt >= 0.5) {
+            tk.arrived = true; e.tolls++; G.stats.extra = e.tolls; audio.sfxCash();
+            banner(`$${e.tolls}B COLLECTED`);
+            burstInk(e.goalX + 25, C.GROUND_Y - 90, '#ffd400');
+          }
+          if (!tk.arrived) allDone = false;
+        }
+        if (allDone && !e.fanfared) { e.fanfared = true; e.doneAt = t; audio.fanfare(); banner('OPEN FOR BUSINESS'); }
+        if (e.fanfared && t - e.doneAt >= 2.2) { next('done'); completeLevel(); }
+        break;
+      }
     }
   }
 
@@ -246,18 +302,14 @@
     } else if (G.state === 'ending') {
       updateEnding(dt);
     }
-    // camera
     if (G.st && G.state !== 'menu') {
       let cam = G.st.x - C.PLAYER_X;
-      const truckX = G.level.lengthPx;
-      cam = Math.min(cam, truckX - 520);
+      cam = Math.min(cam, G.level.lengthPx - G.level.def.ending.camOffset);
       if (G.camLock != null) cam = G.camLock;
       G.camX = cam;
     }
-    // beat pulse for visuals (menu pulses on its own clock)
     const b = G.state === 'menu' ? (G.time * C.BPM) / 60 : G.beat;
     G.beatPulse = Math.pow(1 - (b % 1), 3);
-    // particles & floaters
     for (let i = G.particles.length - 1; i >= 0; i--) {
       const p = G.particles[i];
       p.life -= dt; if (p.life <= 0) { G.particles.splice(i, 1); continue; }
@@ -269,11 +321,23 @@
   }
 
   // ---------- input ----------
-  function press() {
+  function selectLevel(i) { G.levelIdx = (i + LEVELS.length) % LEVELS.length; }
+  function press(pt) {
     if (!G.noAudio) audio.init();
     audio.resume();
     switch (G.state) {
-      case 'menu': startGame(); break;
+      case 'menu': {
+        if (pt) {
+          for (let i = 0; i < LEVELS.length; i++) {
+            const r = R.menuCardRect(i, LEVELS.length);
+            if (pt.x >= r.x && pt.x <= r.x + r.w && pt.y >= r.y && pt.y <= r.y + r.h) {
+              if (G.levelIdx !== i) { selectLevel(i); return; }
+            }
+          }
+        }
+        startGame(LEVELS[G.levelIdx]);
+        break;
+      }
       case 'complete': quitToMenu(); break;
       case 'paused': resume(); break;
       case 'playing': G.held = true; break;
@@ -281,10 +345,17 @@
     }
   }
   function release() { G.held = false; }
+  function canvasPoint(clientX, clientY) {
+    const r = canvas.getBoundingClientRect();
+    return { x: ((clientX - r.left) / r.width) * C.W, y: ((clientY - r.top) / r.height) * C.H };
+  }
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
     switch (e.code) {
-      case 'Space': case 'ArrowUp': case 'KeyW': e.preventDefault(); press(); break;
+      case 'Space': case 'ArrowUp': case 'KeyW': case 'Enter': e.preventDefault(); press(null); break;
+      case 'ArrowLeft': if (G.state === 'menu') selectLevel(G.levelIdx - 1); break;
+      case 'ArrowRight': if (G.state === 'menu') selectLevel(G.levelIdx + 1); break;
+      case 'Digit1': case 'Digit2': case 'Digit3': if (G.state === 'menu') { const i = parseInt(e.code.slice(5), 10) - 1; if (i < LEVELS.length) selectLevel(i); } break;
       case 'Escape': if (G.state === 'playing' || G.state === 'paused') togglePause(); break;
       case 'KeyR': if (G.state === 'playing' || G.state === 'paused' || G.state === 'dead') { audio.stopSong(true); G.checkpoint = 0; G.checkpoints = []; G.lastCpCheck = -1; G.stats.combo = 0; startAttempt(0); } break;
       case 'KeyQ': if (G.state === 'paused' || G.state === 'complete') quitToMenu(); break;
@@ -294,10 +365,10 @@
       case 'KeyA': G.autoplay = !G.autoplay; break;
     }
   });
-  window.addEventListener('keyup', (e) => { if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') release(); });
-  canvas.addEventListener('mousedown', (e) => { e.preventDefault(); press(); });
+  window.addEventListener('keyup', (e) => { if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW' || e.code === 'Enter') release(); });
+  canvas.addEventListener('mousedown', (e) => { e.preventDefault(); press(canvasPoint(e.clientX, e.clientY)); });
   window.addEventListener('mouseup', release);
-  canvas.addEventListener('touchstart', (e) => { e.preventDefault(); G.touch = true; press(); }, { passive: false });
+  canvas.addEventListener('touchstart', (e) => { e.preventDefault(); G.touch = true; const t = e.changedTouches[0]; press(t ? canvasPoint(t.clientX, t.clientY) : null); }, { passive: false });
   window.addEventListener('touchend', (e) => { e.preventDefault(); release(); }, { passive: false });
   window.addEventListener('touchcancel', release);
   document.addEventListener('visibilitychange', () => { if (document.hidden && G.state === 'playing') togglePause(); });
@@ -312,7 +383,7 @@
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     frameCount++;
-    if (dbgEl) dbgEl.textContent = JSON.stringify({ frames: frameCount, now, time: G.time, state: G.state, beat: G.beat, attempt: G.attempt, checkpoints: G.checkpoints.length, practice: G.practice, autoplay: !!G.autoplay, x: G.st && G.st.x, song: audio.songTime(), ending: G.ending && { phase: G.ending.phase, trumpIn: G.ending.trumpIn, stamp1: G.ending.stamp1, stamp2: G.ending.stamp2, truckX: G.ending.truckX, truckX0: G.ending.truckX0 }, audio: audio.ctx ? audio.ctx.state + ':' + audio.ctx.currentTime.toFixed(2) + ':step' + audio.nextStep : 'none', stats: G.stats, err: G.lastError || null });
+    if (dbgEl) dbgEl.textContent = JSON.stringify({ frames: frameCount, now, time: G.time, state: G.state, level: G.level && G.level.def.id, beat: G.beat, attempt: G.attempt, checkpoints: G.checkpoints.length, practice: G.practice, autoplay: !!G.autoplay, x: G.st && G.st.x, song: audio.songTime(), ending: G.ending && { phase: G.ending.phase, trumpIn: G.ending.trumpIn, stamp1: G.ending.stamp1, stamp2: G.ending.stamp2, arm: G.ending.arm, tolls: G.ending.tolls, tankers: G.ending.tankers.length, truckX: G.ending.truckX, truckX0: G.ending.truckX0 }, audio: audio.ctx ? audio.ctx.state + ':' + audio.ctx.currentTime.toFixed(2) + ':step' + audio.nextStep : 'none', stats: G.stats, err: G.lastError || null });
     try { update(dt, now / 1000); R.draw(ctx, G); }
     catch (err) { G.lastError = String(err && err.stack || err); console.error(err); }
     if (G.lastError) { ctx.fillStyle = '#ff5555'; ctx.font = '12px monospace'; ctx.textAlign = 'left'; G.lastError.split(String.fromCharCode(10)).slice(0, 4).forEach((l, i) => ctx.fillText(l, 10, 100 + i * 14)); }
@@ -322,7 +393,7 @@
   const img = new Image();
   img.onload = () => {
     R.init(img); G.state = 'menu';
-    if (Q.has('start')) { startGame(); const b = parseFloat(Q.get('start')) || 0; if (b > 0) { G.attempt = 0; startAttempt(b); } }
+    if (Q.has('start')) { startGame(LEVELS[G.levelIdx]); const b = parseFloat(Q.get('start')) || 0; if (b > 0) { G.attempt = 0; startAttempt(b); } }
   };
   img.onerror = () => { G.state = 'menu'; console.error('Could not load sprite sheet'); };
   img.src = SPR.SHEET;
