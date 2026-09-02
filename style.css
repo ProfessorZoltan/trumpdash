@@ -1,0 +1,27 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #05060f;
+  overflow: hidden;
+  font-family: "Segoe UI", Arial, sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
+}
+#wrap {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, #10142a 0%, #05060f 70%);
+}
+#game {
+  width: min(100vw, calc(100vh * 16 / 9));
+  height: auto;
+  aspect-ratio: 16 / 9;
+  box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
+  cursor: pointer;
+  outline: none;
+}
