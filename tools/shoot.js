@@ -27,6 +27,16 @@ const PLANS = {
     ['t_approach', (s) => s.beat >= 157.6], ['t_complete', (s) => s.state === 'complete'],
   ], timeout: 100000 },
   audio: { url: '?autoplay=1&start=0&debug=1', shots: [['a_mid', (s) => s.beat >= 40], ['a_end', (s) => s.state === 'complete']], timeout: 100000 },
+  // practice mode: flags appear, autoplay is switched off so the run dies, then restarts at the last flag
+  practice: { url: '?autoplay=1&noaudio=1&mute=1&start=0&debug=1&practice=1', shots: [
+    ['p_cp1', (s) => s.beat >= 9.3],
+    ['p_cp3', (s) => s.beat >= 25.3],
+    ['p_off', (s) => s.beat >= 25.6 && s.attempt === 1, { key: 'a' }],
+    ['p_dead', (s) => s.state === 'dead'],
+    ['p_restart', (s) => s.state === 'playing' && s.attempt === 2],
+    ['p_on', (s) => s.state === 'playing' && s.attempt === 2 && !s.autoplay, { key: 'a' }],
+    ['p_more', (s) => s.beat >= 34.3 && s.attempt === 2],
+  ], timeout: 60000 },
 };
 
 class CDP {
@@ -58,11 +68,17 @@ class CDP {
     if (s) {
       lastState = s;
       if (s.err) { console.log('PAGE ERROR:', s.err); break; }
-      const [name, cond] = plan.shots[idx];
+      const [name, cond, action] = plan.shots[idx];
       if (cond(s)) {
+        if (action && action.key) {
+          const code = 'Key' + action.key.toUpperCase(), vk = action.key.toUpperCase().charCodeAt(0);
+          await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: action.key, code, windowsVirtualKeyCode: vk });
+          await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: action.key, code, windowsVirtualKeyCode: vk });
+          await sleep(60);
+        }
         const shot = await cdp.send('Page.captureScreenshot', { format: 'png' });
         fs.writeFileSync(path.join(OUT, name + '.png'), Buffer.from(shot.result.data, 'base64'));
-        console.log(`${name}: beat=${(s.beat || 0).toFixed(2)} state=${s.state} ending=${s.ending ? s.ending.phase : '-'} audio=${s.audio}`);
+        console.log(`${name}: beat=${(s.beat || 0).toFixed(2)} state=${s.state} attempt=${s.attempt} checkpoints=${s.checkpoints} barrels=${s.stats && s.stats.barrels} autoplay=${s.autoplay} ending=${s.ending ? s.ending.phase : '-'} audio=${s.audio}`);
         idx++;
       }
     }

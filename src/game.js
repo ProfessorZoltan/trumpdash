@@ -16,7 +16,7 @@
     showHitboxes: false, touch: false,
     held: false, beat: 0, beatPulse: 0, time: 0, camX: -C.PLAYER_X, camLock: null,
     particles: [], floaters: [], shake: 0,
-    stats: null, deathMsg: null, deadAt: 0, checkpoint: 0, checkpointX: 0, lastCpCheck: -1,
+    stats: null, deathMsg: null, deadAt: 0, checkpoint: 0, checkpoints: [], lastCpCheck: -1,
     ending: null, constitutionsStepped: 0,
     best: parseFloat(lsGet(LS.best, '0')) || 0, wins: parseInt(lsGet(LS.wins, '0'), 10) || 0,
   };
@@ -26,6 +26,7 @@
   G.autoplay = Q.get('autoplay') === '1';
   G.noAudio = Q.get('noaudio') === '1';
   if (Q.get('mute') === '1') { G.muted = true; audio.muted = true; }
+  if (Q.has('practice')) G.practice = Q.get('practice') === '1';
 
   const DEATH_MSGS = {
     spike: ['Impeached!', "Tariff'd!", 'Sad!', 'Fake jump!', 'Covfefe.', 'Bigly missed.', 'Off the beat, off the cliff.', 'Very unfair. Rigged spike.'],
@@ -51,7 +52,7 @@
     G.level = LV.buildLevel();
     audio.setLevel(G.level);
     G.attempt = 0;
-    G.checkpoint = 0; G.checkpointX = 0; G.lastCpCheck = -1;
+    G.checkpoint = 0; G.checkpoints = []; G.lastCpCheck = -1;
     G.constitutionsStepped = 0;
     resetStats();
     startAttempt(0);
@@ -60,7 +61,8 @@
     G.attempt++;
     G.st = PHYS.makeState(beat);
     PHYS.resetObjects(G.level, beat * C.BEAT_PX);
-    if (beat === 0) { G.stats.barrels = 0; G.stats.combo = 0; }
+    G.stats.barrels = G.level.objs.reduce((n, o) => n + (o.t === 'barrel' && o.got ? 1 : 0), 0);
+    if (beat === 0) G.stats.combo = 0;
     G.state = 'playing';
     G.held = false;
     G.particles.length = 0; G.floaters.length = 0;
@@ -164,9 +166,10 @@
     G.lastCpCheck = ib;
     if (ib - G.checkpoint < 8 || ib < 4) return;
     if (!st.onGround || st.ground !== null) return;
-    for (const jb of G.level.jumpBeats) { if (jb > ib - 0.6 && jb < ib + 1.6) return; if (jb > ib + 2) break; }
+    if (!LV.checkpointOK(G.level, ib)) return;
     G.checkpoint = ib;
-    G.checkpointX = ib * C.BEAT_PX;
+    G.checkpoints.push(ib * C.BEAT_PX);
+    G.floaters.push({ text: 'CHECKPOINT', x: st.x, y: st.y - 90, t0: G.time, dur: 0.8, color: '#7dffb0', size: 16 });
     audio.sfxCheckpoint();
   }
 
@@ -283,7 +286,7 @@
     switch (e.code) {
       case 'Space': case 'ArrowUp': case 'KeyW': e.preventDefault(); press(); break;
       case 'Escape': if (G.state === 'playing' || G.state === 'paused') togglePause(); break;
-      case 'KeyR': if (G.state === 'playing' || G.state === 'paused' || G.state === 'dead') { audio.stopSong(true); G.checkpoint = 0; G.checkpointX = 0; G.lastCpCheck = -1; G.stats.combo = 0; startAttempt(0); } break;
+      case 'KeyR': if (G.state === 'playing' || G.state === 'paused' || G.state === 'dead') { audio.stopSong(true); G.checkpoint = 0; G.checkpoints = []; G.lastCpCheck = -1; G.stats.combo = 0; startAttempt(0); } break;
       case 'KeyQ': if (G.state === 'paused' || G.state === 'complete') quitToMenu(); break;
       case 'KeyM': G.muted = !G.muted; audio.setMuted(G.muted); lsSet(LS.muted, G.muted ? '1' : '0'); break;
       case 'KeyP': if (G.state === 'menu' || G.state === 'paused') { G.practice = !G.practice; lsSet(LS.practice, G.practice ? '1' : '0'); } break;
@@ -309,7 +312,7 @@
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     frameCount++;
-    if (dbgEl) dbgEl.textContent = JSON.stringify({ frames: frameCount, now, time: G.time, state: G.state, beat: G.beat, x: G.st && G.st.x, song: audio.songTime(), ending: G.ending && { phase: G.ending.phase, trumpIn: G.ending.trumpIn, stamp1: G.ending.stamp1, stamp2: G.ending.stamp2, truckX: G.ending.truckX, truckX0: G.ending.truckX0 }, audio: audio.ctx ? audio.ctx.state + ':' + audio.ctx.currentTime.toFixed(2) + ':step' + audio.nextStep : 'none', stats: G.stats, err: G.lastError || null });
+    if (dbgEl) dbgEl.textContent = JSON.stringify({ frames: frameCount, now, time: G.time, state: G.state, beat: G.beat, attempt: G.attempt, checkpoints: G.checkpoints.length, practice: G.practice, autoplay: !!G.autoplay, x: G.st && G.st.x, song: audio.songTime(), ending: G.ending && { phase: G.ending.phase, trumpIn: G.ending.trumpIn, stamp1: G.ending.stamp1, stamp2: G.ending.stamp2, truckX: G.ending.truckX, truckX0: G.ending.truckX0 }, audio: audio.ctx ? audio.ctx.state + ':' + audio.ctx.currentTime.toFixed(2) + ':step' + audio.nextStep : 'none', stats: G.stats, err: G.lastError || null });
     try { update(dt, now / 1000); R.draw(ctx, G); }
     catch (err) { G.lastError = String(err && err.stack || err); console.error(err); }
     if (G.lastError) { ctx.fillStyle = '#ff5555'; ctx.font = '12px monospace'; ctx.textAlign = 'left'; G.lastError.split(String.fromCharCode(10)).slice(0, 4).forEach((l, i) => ctx.fillText(l, 10, 100 + i * 14)); }

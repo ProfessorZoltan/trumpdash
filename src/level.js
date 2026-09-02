@@ -193,5 +193,11 @@
     return { objs, deco, jumpBeats: jb, jumpSet: new Set(jb), endBeat, totalBarrels, lengthPx: bx(endBeat) };
   }
 
-  root.TD_LEVEL = { buildLevel, SECTIONS, sectionAt };
+  // A checkpoint may sit on an integer beat only if no press is required on that beat or its
+  // half-beat: after the restart lead-in the player always gets at least one full beat to react.
+  function checkpointOK(level, beat) {
+    return Number.isInteger(beat) && !level.jumpSet.has(beat) && !level.jumpSet.has(beat + 0.5);
+  }
+
+  root.TD_LEVEL = { buildLevel, SECTIONS, sectionAt, checkpointOK };
 })(typeof module !== 'undefined' ? module.exports : window);

@@ -60,6 +60,38 @@ for (const w of worst.slice(0, 12)) console.log(`  beat ${w.beat}: [${w.lo}, +${
 console.log('\nAll windows:');
 worst.sort((a, b) => a.beat - b.beat);
 console.log(worst.map((w) => `${w.beat}:[${w.lo},${w.hi}]`).join('  '));
+// Practice-mode checkpoints: sample the exact-press run at integer beats using the game's rule,
+// then confirm the level can still be finished when restarting from each checkpoint.
+function findCheckpoints() {
+  const level = L.buildLevel();
+  const st = P.makeState(0);
+  const cps = [];
+  let last = 0, lastChecked = -1, pi = 0;
+  while (!st.dead && !st.finished) {
+    const t = st.t;
+    while (pi < exact.length && exact[pi] + HOLD < t) pi++;
+    let held = false;
+    for (let k = pi; k < exact.length && exact[k] <= t; k++) if (t < exact[k] + HOLD) { held = true; break; }
+    P.step(st, level, held, C.DT);
+    const ib = Math.floor(st.t / C.BEAT_SEC);
+    if (ib > lastChecked) {
+      lastChecked = ib;
+      if (ib >= 4 && ib - last >= 8 && st.onGround && st.ground === null && L.checkpointOK(level, ib)) { cps.push(ib); last = ib; }
+    }
+  }
+  return cps;
+}
+const cps = findCheckpoints();
+console.log(`
+Practice checkpoints (${cps.length}): ${cps.join(', ')}`);
+let cpFail = 0;
+for (const cp of cps) {
+  const presses = beats.filter((b) => b > cp).map((b) => b * C.BEAT_SEC);
+  const r = simulate(presses, cp, Infinity);
+  if (!r.st.finished) { cpFail++; console.log(`  restart from ${cp}: DIED at beat ${(r.st.t / C.BEAT_SEC).toFixed(2)}`); }
+}
+console.log(cpFail ? `${cpFail} checkpoint restarts fail.` : 'All checkpoint restarts finish the level.');
+
 const bad = worst.filter((w) => !(w.width >= 90) || w.lo > -30 || w.hi < 30);
 console.log(`\n${bad.length} problematic windows.`);
-process.exit(base.st.finished && bad.length === 0 ? 0 : 1);
+process.exit(base.st.finished && bad.length === 0 && cpFail === 0 ? 0 : 1);

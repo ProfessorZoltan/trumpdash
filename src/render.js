@@ -545,11 +545,15 @@
       const sx = G.attemptX - G.camX;
       if (sx > -300 && sx < W + 300) text(ctx, `Attempt ${G.attempt}`, sx, 150, `bold 44px ${TITLE_FONT}`, '#fff', 'center', 'rgba(0,0,0,0.8)', 6);
     }
-    if (G.practice && G.checkpointX > 0) {
-      const sx = G.checkpointX - G.camX;
-      if (sx > -50 && sx < W + 50) {
+    if (G.practice && G.checkpoints) {
+      for (let i = 0; i < G.checkpoints.length; i++) {
+        const sx = G.checkpoints[i] - G.camX;
+        if (sx < -50 || sx > W + 50) continue;
+        const latest = i === G.checkpoints.length - 1;
         ctx.fillStyle = '#ccc'; ctx.fillRect(sx - 2, GY - 70, 4, 70);
-        ctx.fillStyle = '#2ecc71'; ctx.beginPath(); ctx.moveTo(sx + 2, GY - 70); ctx.lineTo(sx + 34, GY - 58); ctx.lineTo(sx + 2, GY - 46); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = latest ? '#2ecc71' : '#8fd9a8';
+        ctx.beginPath(); ctx.moveTo(sx + 2, GY - 70); ctx.lineTo(sx + 34, GY - 58); ctx.lineTo(sx + 2, GY - 46); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1.5; ctx.stroke();
       }
     }
   }
