@@ -8,7 +8,7 @@
   function makeState(beat, level) {
     return {
       t: beat * C.BEAT_SEC, x: level && level.xAtBeat ? level.xAtBeat(beat) : beat * C.BEAT_PX, y: C.GROUND_Y, vy: 0, grav: 1,
-      onGround: true, ground: null, airT: 0, rot: 0, speedMul: 1,
+      onGround: true, ground: null, airT: 0, rot: 0, speedMul: 1, gk: 1,
       dead: false, deathBy: null, finished: false, oi: 0, events: [],
       prevTop: C.GROUND_Y - PH, prevBot: C.GROUND_Y,
     };
@@ -17,6 +17,12 @@
   function speedAt(level, x) {
     const zs = level.zones;
     if (zs) for (let i = 0; i < zs.length; i++) { const z = zs[i]; if (x < z.x0) break; if (x < z.x1) return z.m; }
+    return 1;
+  }
+  // Gravity divisor at a world x (low-gravity zones: jumps go k times higher and last k times longer)
+  function gravAt(level, x) {
+    const zs = level.lowg;
+    if (zs) for (let i = 0; i < zs.length; i++) { const z = zs[i]; if (x < z.x0) break; if (x < z.x1) return z.k; }
     return 1;
   }
 
@@ -84,12 +90,14 @@
     const beatNow = st.t / C.BEAT_SEC;
     // riding a lift: the feet follow the platform
     if (st.onGround && st.ground && st.ground.t === 'lift') st.y = liftTop(st.ground, beatNow);
+    const k = gravAt(level, st.x);
+    if (k !== st.gk) { st.gk = k; emit(st, 'lowg', { k }); }
     if (!st.onGround) {
-      st.vy += g * C.GRAVITY * dt;
+      st.vy += (g * C.GRAVITY / k) * dt;
       if (g === 1) st.vy = Math.min(st.vy, C.MAX_FALL); else st.vy = Math.max(st.vy, -C.MAX_FALL);
       st.y += st.vy * dt;
       st.airT += dt;
-      st.rot += ((Math.PI * 2) / C.AIR_T) * dt;
+      st.rot += ((Math.PI * 2) / (C.AIR_T * k)) * dt;
       if (g === 1) {
         if (st.y >= C.GROUND_Y) {
           if (overGround(level, pl, pr)) land(st, C.GROUND_Y, null);
@@ -184,5 +192,5 @@
     }
   }
 
-  root.TD_PHYSICS = { makeState, step, resetObjects, droneCY, liftTop, overGround, overCeiling, hitTop, hitBot, speedAt };
+  root.TD_PHYSICS = { makeState, step, resetObjects, droneCY, liftTop, overGround, overCeiling, hitTop, hitBot, speedAt, gravAt };
 })(typeof window !== 'undefined' ? window : globalThis);

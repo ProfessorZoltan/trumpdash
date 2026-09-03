@@ -215,6 +215,32 @@
         o.start(t); o.stop(t + dur + 0.05);
       }
     }
+    theremin(t, midi, dur, v) {
+      // sine with a slow vibrato and a glide into the note
+      const ctx = this.ctx;
+      const f = mtof(midi);
+      const o = ctx.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(f * 0.94, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.08);
+      const lfo = ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 5.5;
+      const lfoG = ctx.createGain(); lfoG.gain.value = f * 0.012;
+      lfo.connect(lfoG); lfoG.connect(o.frequency);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(v * 0.3, t + 0.05);
+      g.gain.setValueAtTime(v * 0.3, t + dur * 0.6);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(this.duckBus); g.connect(this.delaySend);
+      o.start(t); lfo.start(t); o.stop(t + dur + 0.05); lfo.stop(t + dur + 0.05);
+    }
+    zap(t, v) {
+      // laser: fast downward sweep
+      const ctx = this.ctx;
+      const o = ctx.createOscillator(); o.type = 'square';
+      o.frequency.setValueAtTime(1600, t); o.frequency.exponentialRampToValueAtTime(180, t + 0.16);
+      const g = ctx.createGain(); g.gain.setValueAtTime(v * 0.25, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+      o.connect(g); g.connect(this.musicBus); g.connect(this.delaySend);
+      o.start(t); o.stop(t + 0.2);
+    }
     accent(t, midi, v) {
       // the jump cue: a bright pluck, un-ducked, with delay tail
       const ctx = this.ctx;
@@ -423,6 +449,9 @@
         this.osc('triangle', from, t, 0.22, this.sfxBus, (g) => { g.setValueAtTime(0.22, t); g.exponentialRampToValueAtTime(0.001, t + 0.22); }).frequency.exponentialRampToValueAtTime(to, t + 0.18);
         this.osc('sine', from * 1.5, t, 0.22, this.sfxBus, (g) => { g.setValueAtTime(0.1, t); g.exponentialRampToValueAtTime(0.001, t + 0.2); }).frequency.exponentialRampToValueAtTime(to * 1.5, t + 0.18);
       });
+    }
+    sfxBeep(hi) {
+      this.sfx((ctx, t) => this.osc('square', hi ? 1320 : 880, t, 0.05, this.sfxBus, (g) => { g.setValueAtTime(0.08, t); g.exponentialRampToValueAtTime(0.001, t + 0.05); }));
     }
     sfxCheckpoint() {
       this.sfx((ctx, t) => this.osc('triangle', 990, t, 0.15, this.sfxBus, (g) => { g.setValueAtTime(0.15, t); g.exponentialRampToValueAtTime(0.001, t + 0.15); }));

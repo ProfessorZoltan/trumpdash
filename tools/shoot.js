@@ -83,6 +83,23 @@ const PLANS = {
     ['n_ship', (s) => s.ending && s.ending.phase === 'ship' && s.ending.ship > 0.45],
     ['n_complete', (s) => s.state === 'complete'],
   ], timeout: 40000 },
+  tour6: { url: '?level=moon&autoplay=1&noaudio=1&mute=1&start=0&debug=1', shots: [
+    ['x_start', (s) => s.beat >= 1.8], ['x_alien', (s) => s.beat >= 34.35], ['x_ufo', (s) => s.beat >= 38.4],
+    ['x_rocket', (s) => s.beat >= 50.3], ['x_lowg', (s) => s.beat >= 66.8 && s.gk > 1], ['x_wall', (s) => s.beat >= 70.7],
+    ['x_belt', (s) => s.beat >= 80.6], ['x_boost', (s) => s.beat >= 83.2], ['x_flag', (s) => s.beat >= 99.3],
+    ['x_pad', (s) => s.beat >= 114.6], ['x_flipped', (s) => s.beat >= 125.7 && s.grav === -1], ['x_finale', (s) => s.beat >= 150.7],
+    ['x_approach', (s) => s.beat >= 157.4], ['x_complete', (s) => s.state === 'complete'],
+  ], timeout: 110000 },
+  ending6: { url: '?level=moon&autoplay=1&noaudio=1&mute=1&start=157.3&debug=1', shots: [
+    ['q_enter', (s) => s.ending && s.ending.phase === 'enter'],
+    ['q_typing', (s) => s.ending && s.ending.phase === 'plaque' && s.ending.typed > 60 && s.ending.typed < 150],
+    ['q_stamp2', (s) => s.ending && s.ending.phase === 'stamp2' && s.ending.stamp2 >= 1],
+    ['q_hop', (s) => s.ending && s.ending.phase === 'hop' && s.ending.ufoX > 200],
+    ['q_complete', (s) => s.state === 'complete'],
+  ], timeout: 45000 },
+  probe: { url: process.env.PROBE_URL || '?debug=1', shots: [
+    ['probe', (s) => { if (s.frames % 40 < 3) console.log('PROBE', JSON.stringify({ frames: s.frames, state: s.state, level: s.level, beat: +(s.beat || 0).toFixed(2), attempt: s.attempt, gk: s.gk, song: +(s.song || 0).toFixed(2), err: s.err })); return s.frames > 420; }],
+  ], timeout: 15000 },
   menu: { url: '?debug=1', shots: [
     ['menu_1', (s) => s.state === 'menu'],
     ['menu_2', (s) => s.state === 'menu', { key: 'ArrowRight' }],

@@ -9,6 +9,7 @@ require('../src/levels/venezuela.js');
 require('../src/levels/hormuz.js');
 require('../src/levels/canada.js');
 require('../src/levels/panama.js');
+require('../src/levels/moon.js');
 require('../src/physics.js');
 const C = globalThis.TD_CONST, P = globalThis.TD_PHYSICS, L = globalThis.TD_LEVEL, DEFS = globalThis.TD_LEVELS;
 

@@ -114,7 +114,47 @@
     else if (backdrop === 'arctic') drawArcticBackdrop(ctx, G, cam);
     else if (backdrop === 'canada') drawCanadaBackdrop(ctx, G, cam);
     else if (backdrop === 'tropics') drawTropicsBackdrop(ctx, G, cam);
+    else if (backdrop === 'space') drawSpaceBackdrop(ctx, G, cam);
     else drawCityBackdrop(ctx, cam);
+  }
+  function drawSpaceBackdrop(ctx, G, cam) {
+    // dense starfield
+    for (let i = 0; i < 110; i++) {
+      const sx = ((rnd(i + 900) * 1600 - cam * 0.03) % 1600 + 1600) % 1600 - 200;
+      const sy = rnd(i + 950) * 400, s = 1 + rnd(i + 960) * 2;
+      ctx.fillStyle = `rgba(255,255,255,${(0.4 + 0.6 * Math.abs(Math.sin(G.time * 2 + i))).toFixed(2)})`;
+      ctx.fillRect(sx, sy, s, s);
+    }
+    // a comet
+    const cx = W - ((G.time * 140) % (W + 400)) + 200, cy = 60 + ((G.time * 35) % 120);
+    ctx.strokeStyle = 'rgba(180,220,255,0.5)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + 60, cy - 18); ctx.stroke();
+    ctx.fillStyle = '#e8f4ff'; ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2); ctx.fill();
+    // Earth
+    const ex = W - 160 - ((cam * 0.02) % 60), ey = 120, er = 54;
+    const glow = ctx.createRadialGradient(ex, ey, er, ex, ey, er * 1.8);
+    glow.addColorStop(0, 'rgba(120,180,255,0.35)'); glow.addColorStop(1, 'rgba(120,180,255,0)');
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(ex, ey, er * 1.8, 0, Math.PI * 2); ctx.fill();
+    ctx.save(); ctx.beginPath(); ctx.arc(ex, ey, er, 0, Math.PI * 2); ctx.clip();
+    ctx.fillStyle = '#2b6cc4'; ctx.fillRect(ex - er, ey - er, er * 2, er * 2);
+    ctx.fillStyle = '#2f9e44';
+    ctx.beginPath(); ctx.ellipse(ex - 18, ey - 12, 22, 16, 0.4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(ex + 20, ey + 14, 16, 22, -0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(ex + 8, ey - 30, 14, 8, 0.2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    for (let i = 0; i < 6; i++) { ctx.beginPath(); ctx.ellipse(ex - 40 + i * 16, ey - 20 + rnd(i + 70) * 40, 12, 4, 0.3, 0, Math.PI * 2); ctx.fill(); }
+    const term = ctx.createLinearGradient(ex - er, 0, ex + er, 0);
+    term.addColorStop(0, 'rgba(0,0,20,0)'); term.addColorStop(0.65, 'rgba(0,0,20,0)'); term.addColorStop(1, 'rgba(0,0,20,0.75)');
+    ctx.fillStyle = term; ctx.fillRect(ex - er, ey - er, er * 2, er * 2);
+    ctx.restore();
+    // crater ridges
+    for (const [p, per, col, base] of [[0.12, 1500, 'rgba(190,190,205,0.35)', 150], [0.3, 1100, 'rgba(120,120,135,0.55)', 90]]) {
+      const off = ((-cam * p) % per + per) % per;
+      for (let k = -1; k <= 1; k++) {
+        ctx.beginPath(); ctx.moveTo(off + k * per, GY);
+        for (let i = 0; i <= 12; i++) ctx.lineTo(off + k * per + (i / 12) * per, GY - base + 20 - rnd(i * 3 + p * 50) * base * 0.8);
+        ctx.lineTo(off + k * per + per, GY); ctx.closePath(); ctx.fillStyle = col; ctx.fill();
+      }
+    }
   }
   function drawTropicsBackdrop(ctx, G, cam) {
     // jungle hills
@@ -358,6 +398,14 @@
       ctx.fillStyle = 'rgba(120,200,90,0.35)'; ctx.fillRect(0, GY, W, 8);
       ctx.fillStyle = 'rgba(0,0,0,0.2)';
       for (let x = off - 40; x < W; x += 24) { const hh = 6 + rnd(x + cam) * 10; ctx.fillRect(x + rnd(x * 3) * 8, GY + 8, 3, hh); }
+    } else if (style === 'moon') {
+      for (let i = 0; i < 14; i++) {
+        const sx = ((rnd(i + 1200) * 1100 - cam) % 1100 + 1100) % 1100 - 40, sy = GY + 16 + rnd(i + 1210) * 70, rx = 10 + rnd(i + 1220) * 26;
+        ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.beginPath(); ctx.ellipse(sx, sy, rx, rx * 0.4, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(sx, sy - 2, rx, rx * 0.4, 0, Math.PI, Math.PI * 2); ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      for (let x = off - 60; x < W; x += 30) { ctx.beginPath(); ctx.ellipse(x + 8, GY + 8, 5, 3, 0, 0, Math.PI * 2); ctx.fill(); }
     } else if (style === 'ice') {
       ctx.strokeStyle = 'rgba(80,140,200,0.35)'; ctx.lineWidth = 1.5;
       for (let i = 0; i < 12; i++) {
@@ -386,6 +434,26 @@
         ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(l - 2, GY, 2, H - GY); ctx.fillRect(r, GY, 2, H - GY);
       }
     }
+    // low-gravity fields: a violet haze over the whole play area with drifting motes
+    if (level && level.lowg && level.lowg.length) {
+      for (const z of level.lowg) {
+        const l = z.x0 - cam, r = z.x1 - cam;
+        if (r < 0 || l > W) continue;
+        const fg = ctx.createLinearGradient(0, 0, 0, GY);
+        fg.addColorStop(0, 'rgba(140,90,255,0.04)'); fg.addColorStop(1, 'rgba(140,90,255,0.22)');
+        ctx.fillStyle = fg; ctx.fillRect(l, 0, r - l, GY);
+        ctx.save(); ctx.beginPath(); ctx.rect(l, 0, r - l, GY); ctx.clip();
+        ctx.fillStyle = 'rgba(220,200,255,0.7)';
+        for (let i = 0; i < 40; i++) {
+          const mx = l + rnd(i + 1300) * (r - l), my = GY - 20 - ((rnd(i + 1310) * 400 + G.time * (10 + rnd(i) * 20)) % 400);
+          ctx.fillRect(mx, my, 2, 2);
+        }
+        ctx.restore();
+        ctx.fillStyle = 'rgba(140,90,255,0.9)'; roundRect(ctx, l + 6, GY - 34, 100, 22, 5); ctx.fill();
+        text(ctx, `LOW-G  ÷${z.k}`, l + 56, GY - 23, `bold 12px ${TITLE_FONT}`, '#fff', 'center');
+        ctx.fillStyle = 'rgba(200,180,255,0.6)'; ctx.fillRect(l, 0, 2, GY); ctx.fillRect(r - 2, 0, 2, GY);
+      }
+    }
     const g2 = ctx.createLinearGradient(0, GY, 0, H);
     g2.addColorStop(0, 'rgba(0,0,0,0)');
     g2.addColorStop(1, 'rgba(0,0,0,0.55)');
@@ -407,16 +475,22 @@
         if (water === 'ice') { wg.addColorStop(0, '#9fd9ff'); wg.addColorStop(0.15, '#2f7fb3'); wg.addColorStop(1, '#0a2a44'); }
         else if (water === 'syrup') { wg.addColorStop(0, '#f6c65a'); wg.addColorStop(0.15, '#b5721a'); wg.addColorStop(1, '#4a2a08'); }
         else if (water === 'canal') { wg.addColorStop(0, '#6fc7d8'); wg.addColorStop(0.15, '#2a8fa8'); wg.addColorStop(1, '#0a3a4a'); }
+        else if (water === 'void') { wg.addColorStop(0, '#1a1a3a'); wg.addColorStop(0.2, '#050510'); wg.addColorStop(1, '#000000'); }
         else { wg.addColorStop(0, '#2d8fa8'); wg.addColorStop(0.15, '#0f5f78'); wg.addColorStop(1, '#03202c'); }
         ctx.fillStyle = wg;
         ctx.fillRect(l, GY - 4, r - l, H - GY + 4);
         ctx.save(); ctx.beginPath(); ctx.rect(l, GY - 4, r - l, H - GY + 4); ctx.clip();
-        ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 2;
-        for (let row = 0; row < 3; row++) {
-          ctx.beginPath();
-          const y0 = GY + 2 + row * 22;
-          for (let x = l; x <= r; x += 6) ctx.lineTo(x, y0 + Math.sin((x + cam) * 0.05 + G.time * 3 + row) * 3);
-          ctx.stroke();
+        if (water === 'void') {
+          ctx.fillStyle = 'rgba(255,255,255,0.8)';
+          for (let i = 0; i < 12; i++) ctx.fillRect(l + rnd(i + gp.l) * (r - l), GY + 10 + rnd(i + 3 + gp.l) * 80, 2, 2);
+        } else {
+          ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 2;
+          for (let row = 0; row < 3; row++) {
+            ctx.beginPath();
+            const y0 = GY + 2 + row * 22;
+            for (let x = l; x <= r; x += 6) ctx.lineTo(x, y0 + Math.sin((x + cam) * 0.05 + G.time * 3 + row) * 3);
+            ctx.stroke();
+          }
         }
         ctx.restore();
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -431,16 +505,18 @@
     for (const s of level.ceilings) {
       const l = s.l - cam, r = s.r - cam;
       if (r < 0 || l > W) continue;
+      const rock = level.def.backdrop === 'space';
       const g = ctx.createLinearGradient(0, 0, 0, CY);
-      g.addColorStop(0, '#f4fbff'); g.addColorStop(0.7, '#cfe9fb'); g.addColorStop(1, '#9fd4f5');
+      if (rock) { g.addColorStop(0, '#4a4a56'); g.addColorStop(0.7, '#6e6e7a'); g.addColorStop(1, '#8a8a90'); }
+      else { g.addColorStop(0, '#f4fbff'); g.addColorStop(0.7, '#cfe9fb'); g.addColorStop(1, '#9fd4f5'); }
       ctx.fillStyle = g;
       ctx.fillRect(l, 0, r - l, CY);
       ctx.save(); ctx.beginPath(); ctx.rect(l, 0, r - l, CY + 12); ctx.clip();
-      ctx.fillStyle = '#9fd4f5';
+      ctx.fillStyle = rock ? '#8a8a90' : '#9fd4f5';
       for (let x = l - 40 + ((cam % 80) + 80) % 80 * 0; x < r + 40; x += 34) {
         ctx.beginPath(); ctx.arc(x, CY - 2, 14, 0, Math.PI); ctx.fill();
       }
-      ctx.strokeStyle = 'rgba(80,140,200,0.3)'; ctx.lineWidth = 1.5;
+      ctx.strokeStyle = rock ? 'rgba(0,0,0,0.3)' : 'rgba(80,140,200,0.3)'; ctx.lineWidth = 1.5;
       for (let i = 0; i < 10; i++) {
         const sx = l + rnd(i + 60) * (r - l), sy = 20 + rnd(i + 70) * 90;
         ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + 14, sy + 12); ctx.lineTo(sx + 30, sy + 4); ctx.stroke();
@@ -567,6 +643,40 @@
       }
       case 'tankers': {
         for (let k = 0; k < 2; k++) drawTanker(ctx, sx + k * 320 - 100, GY - 60, 0.55, k ? '#1b5e8a' : '#7a1f1f', G, 0);
+        break;
+      }
+      case 'lander': {
+        drawLander(ctx, sx, GY, 1);
+        break;
+      }
+      case 'rocket': {
+        const x = sx;
+        ctx.fillStyle = '#6a6f78'; ctx.fillRect(x + 70, GY - 300, 14, 300); for (let i = 0; i < 10; i++) ctx.fillRect(x + 40, GY - 290 + i * 30, 44, 4);
+        ctx.fillStyle = '#f2f2f5'; roundRect(ctx, x - 24, GY - 250, 48, 250, 8); ctx.fill();
+        ctx.fillStyle = '#e67e22'; ctx.fillRect(x - 24, GY - 250, 48, 60); ctx.fillRect(x - 24, GY - 120, 48, 16);
+        ctx.fillStyle = '#f2f2f5'; ctx.beginPath(); ctx.moveTo(x - 24, GY - 250); ctx.lineTo(x, GY - 300); ctx.lineTo(x + 24, GY - 250); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#e9e9f2'; ctx.fillRect(x - 44, GY - 200, 16, 200); ctx.fillRect(x + 28, GY - 200, 16, 200);
+        ctx.fillStyle = '#c8102e'; ctx.fillRect(x - 44, GY - 200, 16, 14); ctx.fillRect(x + 28, GY - 200, 16, 14);
+        text(ctx, 'ARTEMIS', x, GY - 150, `bold 10px ${TITLE_FONT}`, '#1b2a4a', 'center');
+        ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5; roundRect(ctx, x - 24, GY - 250, 48, 250, 8); ctx.stroke();
+        break;
+      }
+      case 'flag': {
+        drawMoonFlag(ctx, sx, GY);
+        ctx.fillStyle = 'rgba(0,0,0,0.3)'; for (let i = 0; i < 6; i++) { ctx.beginPath(); ctx.ellipse(sx - 80 + i * 24, GY + 10 + (i % 2) * 6, 6, 3, 0, 0, Math.PI * 2); ctx.fill(); }
+        break;
+      }
+      case 'moonbase': {
+        for (let k = 0; k < 2; k++) {
+          const x = sx + k * 190, r = 70 - k * 15;
+          ctx.fillStyle = '#e9e9f2'; ctx.beginPath(); ctx.arc(x, GY, r, Math.PI, 0); ctx.fill();
+          ctx.strokeStyle = '#8a8f94'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, GY, r, Math.PI, 0); ctx.stroke();
+          ctx.fillStyle = '#8fd3ff'; ctx.beginPath(); ctx.arc(x - r * 0.3, GY - r * 0.45, 10, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(x + r * 0.3, GY - r * 0.45, 10, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#2b6cc4'; ctx.fillRect(x - r, GY - 8, r * 2, 6);
+        }
+        ctx.fillStyle = '#1b2a4a'; ctx.fillRect(sx + 90, GY - 110, 4, 110); ctx.fillStyle = '#2b6cc4'; ctx.fillRect(sx + 60, GY - 130, 64, 22);
+        ctx.fillStyle = 'rgba(255,255,255,0.5)'; for (let i = 0; i < 4; i++) ctx.fillRect(sx + 62 + i * 16, GY - 128, 12, 18);
+        text(ctx, 'OUTPOST 1', sx, GY - 78, `bold 11px ${TITLE_FONT}`, '#1b2a4a', 'center');
         break;
       }
       case 'canalsign': {
@@ -697,6 +807,32 @@
     }
     ctx.restore();
   }
+  // Apollo-style lunar module, feet on `gy`, scaled by s
+  function drawLander(ctx, x, gy, s) {
+    ctx.save(); ctx.translate(x, gy); ctx.scale(s, s);
+    ctx.strokeStyle = '#9a9ea3'; ctx.lineWidth = 5;
+    for (const dx of [-70, 70]) { ctx.beginPath(); ctx.moveTo(dx * 0.5, -70); ctx.lineTo(dx, -6); ctx.stroke(); ctx.fillStyle = '#c9c9d4'; ctx.beginPath(); ctx.ellipse(dx, -4, 14, 5, 0, 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = '#d4a017';
+    ctx.beginPath(); ctx.moveTo(-50, -70); ctx.lineTo(-32, -110); ctx.lineTo(32, -110); ctx.lineTo(50, -70); ctx.lineTo(32, -40); ctx.lineTo(-32, -40); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,0.25)'; for (let i = 0; i < 6; i++) ctx.fillRect(-46 + i * 16, -100 + (i % 2) * 8, 10, 44);
+    ctx.fillStyle = '#c9c9d4'; roundRect(ctx, -34, -170, 68, 62, 8); ctx.fill();
+    ctx.fillStyle = '#9a9ea3'; ctx.fillRect(-34, -150, 68, 6);
+    ctx.fillStyle = '#1b2a4a'; ctx.beginPath(); ctx.moveTo(-26, -160); ctx.lineTo(-10, -160); ctx.lineTo(-14, -140); ctx.lineTo(-26, -140); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(26, -160); ctx.lineTo(10, -160); ctx.lineTo(14, -140); ctx.lineTo(26, -140); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#c8102e'; ctx.fillRect(-8, -132, 16, 20);
+    ctx.strokeStyle = '#9a9ea3'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(30, -170); ctx.lineTo(48, -200); ctx.stroke();
+    ctx.fillStyle = '#e9e9f2'; ctx.beginPath(); ctx.ellipse(52, -204, 12, 6, -0.6, 0, Math.PI * 2); ctx.fill();
+    text(ctx, 'U.S.A.', 0, -122, `bold 9px ${TITLE_FONT}`, '#fff', 'center');
+    ctx.restore();
+  }
+  function drawMoonFlag(ctx, x, gy) {
+    ctx.fillStyle = '#c9c9d4'; ctx.fillRect(x - 2, gy - 150, 4, 150);
+    ctx.fillRect(x, gy - 150, 60, 3);
+    ctx.fillStyle = '#c8102e'; ctx.fillRect(x + 2, gy - 148, 58, 36);
+    ctx.fillStyle = '#fff'; for (let i = 0; i < 4; i++) ctx.fillRect(x + 2, gy - 143 + i * 9, 58, 4);
+    ctx.fillStyle = '#002868'; ctx.fillRect(x + 2, gy - 148, 24, 20);
+    ctx.fillStyle = '#fff'; for (let i = 0; i < 6; i++) ctx.fillRect(x + 5 + (i % 3) * 7, gy - 145 + Math.floor(i / 3) * 8, 2, 2);
+  }
   function drawSign(ctx, o, sx) {
     ctx.fillStyle = '#6b4a2b';
     ctx.fillRect(sx - 3, GY - 70, 6, 70);
@@ -750,11 +886,27 @@
     ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(7, -14, 1.5, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   }
+  function drawAlien(ctx, x, base, flip, G) {
+    ctx.save();
+    ctx.translate(x + B / 2, base);
+    if (flip) ctx.scale(1, -1);
+    const wob = Math.sin(G.time * 8 + x) * 2;
+    ctx.fillStyle = '#5ee36a';
+    ctx.beginPath(); ctx.ellipse(0, -18 + wob, 14, 16, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0, -34 + wob, 12, 8, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#5ee36a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-6, -40 + wob); ctx.lineTo(-10, -52 + wob); ctx.moveTo(6, -40 + wob); ctx.lineTo(10, -52 + wob); ctx.stroke();
+    ctx.fillStyle = '#ff2d95'; ctx.beginPath(); ctx.arc(-10, -52 + wob, 3, 0, Math.PI * 2); ctx.arc(10, -52 + wob, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#111'; ctx.beginPath(); ctx.ellipse(-5, -35 + wob, 4, 5, 0.3, 0, Math.PI * 2); ctx.ellipse(5, -35 + wob, 4, 5, -0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.fillRect(-6, -37 + wob, 2, 2); ctx.fillRect(4, -37 + wob, 2, 2);
+    ctx.fillStyle = '#2f9e44'; ctx.fillRect(-10, -4, 6, 4); ctx.fillRect(4, -4, 6, 4);
+    ctx.restore();
+  }
   function drawSpike(ctx, o, sx, pal) {
     const x = sx, base = o.base;
     if (o.skin === 'bear') { drawBear(ctx, x, base, o.flip); return; }
     if (o.skin === 'mountie') { drawMountie(ctx, x, base, o.flip); return; }
     if (o.skin === 'croc') { drawCroc(ctx, x, base, o.flip); return; }
+    if (o.skin === 'alien') { drawAlien(ctx, x, base, o.flip, pal.G || { time: 0 }); return; }
     ctx.beginPath();
     if (o.flip) { ctx.moveTo(x, base); ctx.lineTo(x + B / 2, base + B); ctx.lineTo(x + B, base); }
     else { ctx.moveTo(x, base); ctx.lineTo(x + B / 2, base - B); ctx.lineTo(x + B, base); }
@@ -865,6 +1017,52 @@
         ctx.fillStyle = '#c8102e'; ctx.beginPath(); ctx.arc(x + w / 2, y + h / 2, 7, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = '#fff'; ctx.fillRect(x + w / 2 - 7, y + h / 2, 14, 7);
         ctx.strokeStyle = '#3a2a10'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
+        break;
+      }
+      case 'budget': {
+        ctx.fillStyle = '#c8102e'; roundRect(ctx, x, y, w, h, 3); ctx.fill();
+        text(ctx, 'NASA', x + w / 2, y + 12, `bold 11px ${TITLE_FONT}`, '#fff', 'center');
+        text(ctx, '$', x + w / 2, y + 28, `bold 16px ${TITLE_FONT}`, '#fff', 'center');
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x + 8, y + 36); ctx.lineTo(x + w - 8, y + 20); ctx.stroke();
+        ctx.strokeStyle = '#4a0a12'; ctx.lineWidth = 2; roundRect(ctx, x, y, w, h, 3); ctx.stroke();
+        break;
+      }
+      case 'rocket': {
+        for (let by = 0; by < o.h; by++) for (let bxi = 0; bxi < o.w; bxi++) {
+          const bx0 = x + bxi * B, by0 = y + by * B;
+          ctx.fillStyle = '#f2f2f5'; ctx.fillRect(bx0 + 1, by0 + 1, B - 2, B - 2);
+          ctx.fillStyle = '#e67e22'; ctx.fillRect(bx0 + 1, by0 + 14, B - 2, 12);
+          ctx.fillStyle = 'rgba(0,0,0,0.25)'; for (let i = 6; i < B; i += 10) ctx.fillRect(bx0 + i, by0 + 5, 2, 2);
+          ctx.strokeStyle = '#555'; ctx.lineWidth = 1.5; ctx.strokeRect(bx0 + 1, by0 + 1, B - 2, B - 2);
+        }
+        break;
+      }
+      case 'regolith': {
+        for (let by = 0; by < o.h; by++) for (let bxi = 0; bxi < o.w; bxi++) {
+          const bx0 = x + bxi * B, by0 = y + by * B;
+          ctx.fillStyle = '#7a7a86'; roundRect(ctx, bx0 + 1, by0 + 1, B - 2, B - 2, 6); ctx.fill();
+          ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.arc(bx0 + 12, by0 + 14, 5, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(bx0 + 27, by0 + 26, 4, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = '#3a3a44'; ctx.lineWidth = 1.5; roundRect(ctx, bx0 + 1, by0 + 1, B - 2, B - 2, 6); ctx.stroke();
+        }
+        break;
+      }
+      case 'moonbase': {
+        ctx.fillStyle = '#e9e9f2'; roundRect(ctx, x, y, w, h, 6); ctx.fill();
+        ctx.fillStyle = '#2b6cc4'; ctx.fillRect(x, y + 6, w, 6);
+        ctx.fillStyle = 'rgba(0,0,0,0.12)'; for (let cy = y + 20; cy < y + h - 6; cy += 20) ctx.fillRect(x + 2, cy, w - 4, 2);
+        for (let cy = y + 30; cy < y + h - 10; cy += 40) { ctx.fillStyle = '#8fd3ff'; ctx.beginPath(); ctx.arc(x + w / 2, cy, 9, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = '#555'; ctx.lineWidth = 2; ctx.stroke(); }
+        ctx.strokeStyle = '#555'; ctx.lineWidth = 2; roundRect(ctx, x, y, w, h, 6); ctx.stroke();
+        break;
+      }
+      case 'solar': {
+        ctx.fillStyle = '#ff8c00'; ctx.fillRect(x, y, w, h);
+        ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+        ctx.strokeStyle = '#ffd400'; ctx.lineWidth = 6;
+        for (let d = -h; d < w + h; d += 22) { ctx.beginPath(); ctx.moveTo(x + d, y + h); ctx.lineTo(x + d + h, y); ctx.stroke(); }
+        ctx.restore();
+        ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(x + w / 2 - 66, y + 8, 132, h - 16);
+        text(ctx, 'SOLAR FLARE', x + w / 2, y + h / 2, `bold 16px ${TITLE_FONT}`, '#fff', 'center');
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
         break;
       }
       case 'feebooth': {
@@ -1124,6 +1322,16 @@
   }
   function drawMine(ctx, o, sx, G) {
     const cx = sx, cy = o.cy, r = o.r;
+    if (o.skin === 'asteroid') {
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(G.time * 1.5 + o.cx * 0.01);
+      ctx.fillStyle = '#7a7a86'; ctx.beginPath();
+      for (let i = 0; i < 9; i++) { const a = (i / 9) * Math.PI * 2, rr = r * (0.8 + 0.3 * rnd(i + o.cx)); ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#3a3a44'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.arc(-4, -3, 4, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(5, 4, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      return;
+    }
     if (o.skin === 'puck') {
       const spin = G.time * 6;
       ctx.fillStyle = '#0a0a0a'; ctx.beginPath(); ctx.ellipse(cx, cy + 4, r, r * 0.55, 0, 0, Math.PI * 2); ctx.fill();
@@ -1148,6 +1356,14 @@
     const top = o.floorY - d * (o.hBase + o.amp), bot = o.floorY - d * (o.hBase - o.amp);
     ctx.strokeStyle = 'rgba(255,90,90,0.25)'; ctx.lineWidth = 1; ctx.setLineDash([4, 6]);
     ctx.beginPath(); ctx.moveTo(cx, Math.min(top, bot) - 8); ctx.lineTo(cx, Math.max(top, bot) + 8); ctx.stroke(); ctx.setLineDash([]);
+    if (o.skin === 'ufo') {
+      ctx.fillStyle = 'rgba(120,255,160,0.25)'; ctx.beginPath(); ctx.moveTo(cx - 10, cy + 6); ctx.lineTo(cx - 30, cy + 70); ctx.lineTo(cx + 30, cy + 70); ctx.lineTo(cx + 10, cy + 6); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#9a9ea3'; ctx.beginPath(); ctx.ellipse(cx, cy + 2, 26, 8, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#8fd3ff'; ctx.beginPath(); ctx.arc(cx, cy - 4, 10, Math.PI, 0); ctx.fill();
+      ctx.strokeStyle = '#3a3a44'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(cx, cy + 2, 26, 8, 0, 0, Math.PI * 2); ctx.stroke();
+      for (let i = 0; i < 5; i++) { ctx.fillStyle = (Math.floor(G.time * 6) + i) % 2 ? '#ff2d95' : '#ffd400'; ctx.beginPath(); ctx.arc(cx - 20 + i * 10, cy + 5, 2.2, 0, Math.PI * 2); ctx.fill(); }
+      return;
+    }
     const spin = G.time * 40;
     ctx.fillStyle = '#2a2d36'; roundRect(ctx, cx - 14, cy - 5, 28, 10, 4); ctx.fill();
     ctx.strokeStyle = '#4a4f5c'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(cx - 24, cy - 6); ctx.lineTo(cx + 24, cy - 6); ctx.stroke();
@@ -1470,6 +1686,53 @@
     }
   }
 
+  // ---- Moon ending: the outpost site and the plaque ----
+  const PLAQUE = [
+    'AMERICA HAS RETURNED',
+    'Under the leadership of President Donald Trump,',
+    'and with the hopes and dreams of all mankind,',
+    "here marks the beginnings of humanity's",
+    'first outpost on another world.',
+    'Signed, President Donald Trump',
+  ];
+  const PLAQUE_CHARS = PLAQUE.reduce((n, l) => n + l.length, 0);
+  function drawMoonSite(ctx, sx, G, e) {
+    drawLander(ctx, sx + 560, GY, 1.05);
+    drawMoonFlag(ctx, sx + 440, GY);
+    // sign
+    const cx = sx + 120, top = 150, sw = 250, sh = 74;
+    ctx.fillStyle = '#9a9ea3'; ctx.fillRect(cx - 4, top + sh, 8, GY - top - sh);
+    ctx.fillStyle = '#1b2a4a'; roundRect(ctx, cx - sw / 2, top, sw, sh, 8); ctx.fill();
+    ctx.strokeStyle = '#8fd3ff'; ctx.lineWidth = 3; roundRect(ctx, cx - sw / 2 + 6, top + 6, sw - 12, sh - 12, 6); ctx.stroke();
+    text(ctx, 'THE MOON', cx, top + 30, `bold 32px ${TITLE_FONT}`, '#ffffff', 'center');
+    text(ctx, 'POP. 0  ·  GRAVITY 1/6  ·  OWNER: NOBODY', cx, top + 58, `bold 10px ${UI_FONT}`, '#cfe3ff', 'center');
+    if (e) {
+      drawStamp(ctx, 'RETURNED', cx + 8, top + 40, -0.14, e.stamp1, '#c8102e', 36, null);
+      drawStamp(ctx, 'TRUMP', cx - 6, top + 36, 0.1, e.stamp2, '#ffd400', 46, '#3a2a00');
+    }
+    // pedestal
+    ctx.fillStyle = '#7a7a86'; roundRect(ctx, sx + 250, GY - 56, 180, 56, 4); ctx.fill();
+    ctx.strokeStyle = '#3a3a44'; ctx.lineWidth = 2; ctx.stroke();
+    // the plaque, lowered into place then engraved line by line
+    const py = e ? e.plaqueY : GY - 200;
+    const pw = 360, ph = 132, px = sx + 340 - pw / 2;
+    const bg = ctx.createLinearGradient(px, py, px + pw, py + ph);
+    bg.addColorStop(0, '#b8860b'); bg.addColorStop(0.5, '#e6c15a'); bg.addColorStop(1, '#8a6508');
+    ctx.fillStyle = bg; roundRect(ctx, px, py, pw, ph, 8); ctx.fill();
+    ctx.strokeStyle = '#5a4008'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1.5; roundRect(ctx, px + 6, py + 6, pw - 12, ph - 12, 6); ctx.stroke();
+    for (const [dx, dy] of [[12, 12], [pw - 12, 12], [12, ph - 12], [pw - 12, ph - 12]]) { ctx.fillStyle = '#5a4008'; ctx.beginPath(); ctx.arc(px + dx, py + dy, 3, 0, Math.PI * 2); ctx.fill(); }
+    let remaining = e ? Math.floor(e.typed || 0) : PLAQUE_CHARS;
+    for (let i = 0; i < PLAQUE.length; i++) {
+      const line = PLAQUE[i];
+      const shown = line.slice(0, Math.max(0, Math.min(line.length, remaining)));
+      remaining -= line.length;
+      const font = i === 0 ? `bold 15px ${TITLE_FONT}` : i === PLAQUE.length - 1 ? `italic bold 11px ${SERIF}` : `bold 11px ${SERIF}`;
+      text(ctx, shown, px + pw / 2, py + 22 + i * 19 + (i > 0 ? 4 : 0), font, '#3a2a08', 'center');
+      if (shown.length < line.length) break;
+    }
+  }
+
   function drawObjects(ctx, G, pal) {
     const cam = G.camX, lv = G.level, def = lv.def;
     for (const d of lv.deco) {
@@ -1496,10 +1759,12 @@
           else if (def.ending.type === 'toll') drawTollGate(ctx, o.x - cam, G, G.ending);
           else if (def.ending.type === 'sign') drawBorderSign(ctx, o.x - cam, G, G.ending);
           else if (def.ending.type === 'canal') drawCanalGate(ctx, o.x - cam, G, G.ending);
+          else if (def.ending.type === 'plaque') drawMoonSite(ctx, o.x - cam, G, G.ending);
           else drawMapBoard(ctx, o.x - cam, G, G.ending);
           break;
       }
     }
+    pal.G = G;
     for (const o of late) drawSpike(ctx, o, o.x - cam, pal);
     if (G.showHitboxes) {
       ctx.strokeStyle = '#00ff88'; ctx.lineWidth = 1;
@@ -1617,7 +1882,15 @@
     const e = G.ending;
     if (!e) return;
     const goal = e.goalX - G.camX;
-    if (e.type === 'map' || e.type === 'sign' || e.type === 'canal') {
+    if (e.type === 'plaque') {
+      const cheering = e.phase === 'hop' || e.phase === 'done';
+      const hop = cheering ? Math.abs(Math.sin(G.time * 3.2)) * 110 : 0; // low-gravity bounces
+      drawPose(ctx, cheering ? 'cheer' : 'point', goal, GY - hop, 96, false);
+      if (e.ufoX != null) {
+        const ux = e.goalX + e.ufoX - G.camX, uy = 150 + Math.sin(G.time * 4) * 8;
+        drawDrone(ctx, { cx: ux, skin: 'ufo', floorY: uy, hBase: 0, amp: 0, period: 1, phase: 0, dir: 1, r: 14 }, ux, Object.assign({}, G, { st: null, beat: 0 }));
+      }
+    } else if (e.type === 'map' || e.type === 'sign' || e.type === 'canal') {
       const cheering = e.phase === 'slide' || e.phase === 'flag' || e.phase === 'ship' || e.phase === 'done';
       const hop = e.phase === 'slide' || e.phase === 'ship' || (e.phase === 'flag' && e.flag2Y > 0) ? Math.abs(Math.sin(G.time * 10)) * 12 : 0;
       drawPose(ctx, cheering ? 'cheer' : 'point', goal, GY - hop, 96, false);
@@ -1685,6 +1958,11 @@
       drawTollGate(ctx, (w * 0.52) / s, fakeG, { arm: 1, stamp1: 0, stamp2: 0, subSign: 0, trumpIn: 0, tankers: [] });
       drawMine(ctx, { cx: (w * 0.14) / s, cy: GY - 46, r: 16 }, (w * 0.14) / s, fakeG);
       if (runFrames[2]) ctx.drawImage(runFrames[2], (w * 0.28) / s, GY - 72);
+    } else if (def.ending.type === 'plaque') {
+      drawLander(ctx, (w * 0.8) / s, GY, 0.9);
+      drawSpike(ctx, { x: (w * 0.1) / s, base: GY, flip: false, skin: 'alien' }, (w * 0.1) / s, Object.assign({ G: fakeG }, pal));
+      drawMine(ctx, { cx: (w * 0.5) / s, cy: GY - 120, r: 16, skin: 'asteroid' }, (w * 0.5) / s, fakeG);
+      if (runFrames[2]) ctx.drawImage(runFrames[2], (w * 0.3) / s, GY - 72);
     } else if (def.ending.type === 'canal') {
       drawCanalGate(ctx, (w * 0.05) / s - 120, fakeG, { gate: 1, ship: 0.42, stamp1: 0, stamp2: 0, subSign: 0 });
       drawSpike(ctx, { x: (w * 0.1) / s, base: GY, flip: false, skin: 'croc' }, (w * 0.1) / s, pal);
@@ -1723,7 +2001,7 @@
         drawThumb(ctx, def, r.x + 8, r.y + 8, 100, r.h - 16, G);
         const tx = r.x + 118;
         text(ctx, `${i + 1}. ${def.name}`, tx, r.y + 22, `bold 14px ${TITLE_FONT}`, '#fff', 'left');
-        const diffCol = def.difficulty === 'INSANE' ? '#c8102e' : def.difficulty === 'EXPERT' ? '#8e44ad' : def.difficulty === 'HARD' ? '#ff8c00' : '#2ecc71';
+        const diffCol = def.difficulty === 'EXTREME' ? '#ff2d95' : def.difficulty === 'INSANE' ? '#c8102e' : def.difficulty === 'EXPERT' ? '#8e44ad' : def.difficulty === 'HARD' ? '#ff8c00' : '#2ecc71';
         ctx.fillStyle = diffCol; roundRect(ctx, tx, r.y + 34, 58, 16, 8); ctx.fill();
         text(ctx, def.difficulty, tx + 29, r.y + 42, `bold 9px ${TITLE_FONT}`, '#fff', 'center');
         text(ctx, `${def.bpm} BPM`, tx + 66, r.y + 42, `10px ${UI_FONT}`, '#cfd3ff', 'left');

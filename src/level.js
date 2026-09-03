@@ -42,6 +42,11 @@
     const bx = xAtBeat;
     const mAt = (b) => { for (const z of zones) if (b >= z.b0 && b < z.b1) return z.m; return 1; };
     function ICE(b0, b1, m) { zones.push({ b0, b1, m: m || 1.25 }); zones.sort((a, c) => a.b0 - c.b0); }
+    // Low-gravity zones: gravity divided by k, so a jump reaches k*JUMP_H and lasts k*AIR_T.
+    // Every helper measures its geometry in beats from the press, so it scales the apex offset by k.
+    const lowg = [];
+    const kAt = (b) => { for (const z of lowg) if (b >= z.b0 && b < z.b1) return z.k; return 1; };
+    function LOWG(b0, b1, k) { lowg.push({ b0, b1, k: k || 2 }); lowg.sort((a, c) => a.b0 - c.b0); }
     let curH = 0;         // height (in blocks) the player is currently running on
     let flipped = false;  // gravity state at the current point of the level
     let ceilStart = 0;
@@ -64,7 +69,13 @@
       for (let i = 0; i < n; i++) objs.push(spikeObj(left + i * B, base, flip, skin));
     }
     // Spikes that require a press exactly on `press` (apex passes over the group)
-    function S(press, n, skin) { spikeRaw(press + JO, n || 1, curH, flipped, skin); jumpBeats.push(press); }
+    function S(press, n, skin) { spikeRaw(press + JO * kAt(press), n || 1, curH, flipped, skin); jumpBeats.push(press); }
+    // A tall 1-wide wall centred under the apex of a low-gravity jump (needs the full k*JUMP_H)
+    function WALLJ(press, h, skin, label) {
+      const cx = bx(press + JO * kAt(press));
+      if (flipped) slabRaw(cx - B / 2, 1, CY, CY + h * B, skin, label); else slabRaw(cx - B / 2, 1, G - h * B, G, skin, label);
+      jumpBeats.push(press);
+    }
 
     function slabRaw(leftPx, w, top, bot, skin, label) {
       objs.push({ t: 'block', l: leftPx, r: leftPx + w * B, top, bot, w, h: Math.round((bot - top) / B), skin: skin || 'plain', label, hang: top <= CY });
@@ -80,11 +91,15 @@
       else slabRaw(leftPx, w, G - h * B, G, skin, label);
     }
     // A 1-high obstacle you jump over (press on `press`)
-    function OVER(press, skin, label) { surfBlock(bx(press + JO + 0.12) - B / 2, 1, 1, skin, label); jumpBeats.push(press); }
+    function OVER(press, skin, label) { surfBlock(bx(press + JO * kAt(press) + 0.12) - B / 2, 1, 1, skin, label); jumpBeats.push(press); }
     // A platform you jump onto (press on `press`, land on top)
     function P(press, w, h, skin, label) {
-      const rel = h - curH;
-      const off = (rel >= 2 ? 100 : 95) * mAt(press); // jump geometry stretches with speed
+      const rel = h - curH, k = kAt(press);
+      let off = (rel >= 2 ? 100 : 95) * mAt(press); // jump geometry stretches with speed
+      if (k !== 1) { // low gravity: land three quarters of the way along the (longer) descending arc
+        const hh = Math.max(0, rel) * B;
+        off = (k * C.JUMP_DX / 2) * (1 + Math.sqrt(Math.max(0, 1 - hh / (k * C.JUMP_H)))) * 0.75 * mAt(press);
+      }
       surfBlock(bx(press) + off, w, h, skin, label);
       jumpBeats.push(press);
       curH = h;
@@ -122,7 +137,7 @@
     function MS(press, n, skin) {
       n = n || 1;
       // centre 18 px off the surface: the circle's far edge (34 px) matches a spike's hitbox height
-      const left = bx(press + JO) - ((n - 1) * 30) / 2;
+      const left = bx(press + JO * kAt(press)) - ((n - 1) * 30) / 2;
       for (let i = 0; i < n; i++) objs.push({ t: 'mine', cx: left + i * 30, cy: away(18), r: 16, skin: skin || 'mine' });
       jumpBeats.push(press);
     }
@@ -133,10 +148,10 @@
     // Drone bobbing over a jump: highest exactly when an on-beat jump reaches its apex
     function DRONE(press, opts) {
       opts = opts || {};
-      const period = opts.period || 2;
+      const period = opts.period || 2, k = kAt(press);
       objs.push({
-        t: 'drone', cx: bx(press + JO), floorY: surf(), dir: flipped ? -1 : 1, hBase: opts.hBase || 150, amp: opts.amp || 50,
-        period, phase: press + JO - period / 4, r: 14,
+        t: 'drone', cx: bx(press + JO * k), floorY: surf(), dir: flipped ? -1 : 1, hBase: (opts.hBase || 150) * k, amp: (opts.amp || 50) * k,
+        period, phase: press + JO * k - period / 4, r: 14, skin: opts.skin || 'drone',
       });
     }
     // Lock lift: a barge in a water chamber that rises from hLow to hHigh blocks and back every
@@ -159,7 +174,7 @@
     }
     function GAP(beatL, beatR) { gaps.push({ l: bx(beatL), r: bx(beatR) }); }
     // Gravity portal at the apex of the jump pressed on `press`
-    function FLIP(press, label) { portalAt(bx(press + JO), away(100 + C.PLAYER_H / 2), label); jumpBeats.push(press); }
+    function FLIP(press, label) { const k = kAt(press); portalAt(bx(press + JO * k), away(k * C.JUMP_H + C.PLAYER_H / 2), label); jumpBeats.push(press); }
     // Gravity portal at running height (no press needed)
     function FLIPRUN(beat, label) { portalAt(bx(beat), away(C.PLAYER_H / 2), label); }
     function portalAt(cx, cy, label) {
@@ -174,9 +189,10 @@
     function SCENE(beat, kind) { deco.push({ t: 'scene', x: bx(beat), kind }); }
     function GOAL(beat) { endBeat = beat; objs.push({ t: 'goal', x: bx(beat) }); }
 
-    def.build({ S, spikeRaw, blockRaw, slabRaw, OVER, P, DROP, O, PAD, COIN, CEIL, MINE, MS, MINES, DRONE, GJ, GAP, FLIP, FLIPRUN, ICE, LIFT, SIGN, SCENE, GOAL, bx, mAt, JO, B, G, CY });
+    def.build({ S, spikeRaw, blockRaw, slabRaw, OVER, WALLJ, P, DROP, O, PAD, COIN, CEIL, MINE, MS, MINES, DRONE, GJ, GAP, FLIP, FLIPRUN, ICE, LOWG, LIFT, SIGN, SCENE, GOAL, bx, mAt, kAt, JO, B, G, CY });
     if (flipped) ceilings.push({ l: ceilStart, r: bx(endBeat) + 400 });
     for (const z of zones) { z.x0 = xAtBeat(z.b0); z.x1 = xAtBeat(z.b1); }
+    for (const z of lowg) { z.x0 = xAtBeat(z.b0); z.x1 = xAtBeat(z.b1); }
 
     // ---- finalize ----
     let totalCoins = 0;
@@ -194,7 +210,7 @@
     gaps.sort((a, b) => a.l - b.l);
     ceilings.sort((a, b) => a.l - b.l);
     const jb = Array.from(new Set(jumpBeats)).sort((a, b) => a - b);
-    return { def, objs, deco, gaps, ceilings, zones, xAtBeat, jumpBeats: jb, jumpSet: new Set(jb), endBeat, totalCoins, lengthPx: bx(endBeat) };
+    return { def, objs, deco, gaps, ceilings, zones, lowg, xAtBeat, jumpBeats: jb, jumpSet: new Set(jb), endBeat, totalCoins, lengthPx: bx(endBeat) };
   }
 
   // A checkpoint may sit on an integer beat only if no press is required on that beat or its

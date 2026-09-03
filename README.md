@@ -1,6 +1,6 @@
 # Trump Dash
 
-A parody rhythm platformer in the style of Geometry Dash, with five levels you pick from the
+A parody rhythm platformer in the style of Geometry Dash, with six levels you pick from the
 main menu.
 
 **Level 1 — GREENLAND (Normal, 112 BPM).** The on-ramp. From Nuuk across the ice past polar
@@ -39,6 +39,16 @@ The ending is the lock gate: PANAMA CANAL is stamped **TAKEN BACK** and then **T
 sign flips to "U.S. ships: free, everyone else: $5,000,000", the gates open and a U.S. ship sails
 through. The track is a dembow: kick on every beat, snare on the tresillo, horn stabs on the drops.
 
+**Level 6 — THE MOON (Extreme, 150 BPM, space synths).** The hardest and strangest: dense
+double spikes, aliens, asteroid mines and a UFO in normal gravity, then **low-gravity zones**
+where every jump goes twice as high and lasts twice as long, with four-block outpost walls,
+crater pits, an asteroid belt you must not jump into, boosted jumps over six-spike fields, a
+Space Force pad over a six-block outpost, and gravity flips inside the low-gravity field. It ends
+at the outpost site, where the plaque is lowered onto its pedestal and engraved line by line with
+the text NASA unveiled ("America has returned… Signed, President Donald Trump"), the sign is
+stamped RETURNED and then TRUMP, and Trump bounces around in one-sixth gravity while a UFO
+flies past.
+
 Satire. Not affiliated with any person, government or oil company.
 
 ## Play
@@ -58,7 +68,7 @@ returning players never run a mix of old and new modules.
 
 | Key | Action |
 | --- | --- |
-| ← → / 1–5 / click a card | Choose a level on the menu |
+| ← → / 1–6 / click a card | Choose a level on the menu |
 | Space / ↑ / W / Enter / click / tap | Start, and jump (hold to keep jumping, like Geometry Dash) |
 | Esc | Pause |
 | R | Restart from the beginning |
@@ -81,7 +91,9 @@ right side up or upside down. `ICE(startBeat, endBeat, multiplier)` declares a s
 builder's beat-to-pixel mapping integrates the multiplier, so obstacles inside the zone are
 still placed on exact beats while the world scrolls faster. `LIFT(press, width, low, high, period)`
 places a lock barge that is lowest exactly when the jump pressed on `press` lands on it and
-highest half a period later; the player rides it and jumps off near the top.
+highest half a period later; the player rides it and jumps off near the top. `LOWG(startBeat,
+endBeat, k)` divides gravity by k inside a zone; every helper scales its apex offset by k, so a
+low-gravity jump still lands its hazard on the beat.
 
 The music is generated live with the Web Audio API. `src/audio.js` owns the instruments and the
 16th-note scheduler; each level's file owns its arrangement. Every beat that requires a jump
@@ -99,9 +111,9 @@ the frame rate stutters.
 * `node tools/shoot.js <plan> [outDir]` drives headless Chrome over the DevTools protocol
   (server must be running on port 8765) and captures screenshots. Plans: `menu`, `tour`,
   `ending`, `practice`, `audio` (Venezuela), `tour2`, `ending2` (Hormuz) and `tour3`, `ending3`
-  (Greenland), `tour4`, `ending4` (Canada), `tour5`, `ending5` (Panama). Set `PORT=` to run several at once.
+  (Greenland), `tour4`, `ending4` (Canada), `tour5`, `ending5` (Panama), `tour6`, `ending6` (Moon). Set `PORT=` to run several at once.
 
-Debug URL parameters: `?level=greenland|venezuela|hormuz|canada|panama`, `?autoplay=1`, `?start=<beat>`, `?noaudio=1`, `?mute=1`,
+Debug URL parameters: `?level=greenland|venezuela|hormuz|canada|panama|moon`, `?autoplay=1`, `?start=<beat>`, `?noaudio=1`, `?mute=1`,
 `?practice=1`, `?debug=1`.
 
 ## Files
@@ -117,9 +129,10 @@ src/levels/venezuela.js  Venezuela: layout, palettes, music, death messages
 src/levels/hormuz.js     Hormuz: layout, palettes, music, death messages
 src/levels/canada.js     The 51st State: layout, palettes, music, death messages
 src/levels/panama.js     Panama Canal: layout, palettes, music, death messages
-src/physics.js           deterministic player physics + collisions (spikes, blocks, mines, drones, water, gravity flip, ice speed zones, lock lifts)
+src/levels/moon.js       The Moon: layout, palettes, music, death messages
+src/physics.js           deterministic player physics + collisions (spikes, blocks, mines, drones, water, gravity flip, ice speed zones, lock lifts, low gravity)
 src/audio.js             instruments, scheduler and sound effects
-src/render.js            canvas rendering, HUD, level-select menu, truck / toll-booth / map / border-sign / canal-gate endings
+src/render.js            canvas rendering, HUD, level-select menu, truck / toll-booth / map / border-sign / canal-gate / moon-plaque endings
 src/game.js              game loop, input, state machine, ending cutscenes
 tools/verify_level.js    completability + timing-window verifier
 tools/shoot.js           headless screenshot harness

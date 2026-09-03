@@ -7,7 +7,7 @@
 <script>
   // Cache busting. Bump TD_VERSION whenever a JS/CSS file changes so browsers never mix old and
   // new modules. On localhost every load gets a fresh stamp so local edits always show up.
-  window.TD_VERSION = '8';
+  window.TD_VERSION = '9';
   (function () {
     var local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
     var v = local ? String(Date.now()) : window.TD_VERSION;
@@ -16,7 +16,7 @@
     document.head.appendChild(css);
     var files = [
       'src/constants.js', 'src/sprites.js', 'src/level.js',
-      'src/levels/greenland.js', 'src/levels/venezuela.js', 'src/levels/hormuz.js', 'src/levels/canada.js', 'src/levels/panama.js',
+      'src/levels/greenland.js', 'src/levels/venezuela.js', 'src/levels/hormuz.js', 'src/levels/canada.js', 'src/levels/panama.js', 'src/levels/moon.js',
       'src/physics.js', 'src/audio.js', 'src/render.js', 'src/game.js',
     ];
     window.addEventListener('DOMContentLoaded', function () {
