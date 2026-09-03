@@ -2,12 +2,27 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Trump Dash</title>
+<meta name="description" content="Trump Dash: a Geometry Dash-style parody rhythm platformer. Run, jump, annex, stay on the beat.">
+<meta name="theme-color" content="#05060f">
+<!-- Home-screen install: landscape, no browser chrome (manifest.json for Android/Chrome, the apple-* tags for iOS) -->
+<link rel="manifest" href="manifest.json">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Trump Dash">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta property="og:title" content="Trump Dash">
+<meta property="og:description" content="A Geometry Dash-style parody rhythm platformer. Run, jump, annex, stay on the beat.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://www.trumpdash.com/icons/og.png">
+<meta name="twitter:card" content="summary_large_image">
 <script>
   // Cache busting. Bump TD_VERSION whenever a JS/CSS file changes so browsers never mix old and
   // new modules. On localhost every load gets a fresh stamp so local edits always show up.
-  window.TD_VERSION = '9';
+  window.TD_VERSION = '10';
   (function () {
     var local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
     var v = local ? String(Date.now()) : window.TD_VERSION;
@@ -33,6 +48,12 @@
 <body>
 <div id="wrap">
   <canvas id="game" width="960" height="540"></canvas>
+</div>
+<div id="rotate">
+  <div class="phone"></div>
+  <h1>ROTATE YOUR PHONE</h1>
+  <p>Trump Dash plays in landscape.</p>
+  <button id="rotate-fs" type="button">GO FULLSCREEN</button>
 </div>
 </body>
 </html>

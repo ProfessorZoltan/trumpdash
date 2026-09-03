@@ -26,7 +26,9 @@
       if (this.ctx) return true;
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return false;
-      const ctx = (this.ctx = new AC());
+      let ctx;
+      try { ctx = new AC({ latencyHint: 'interactive' }); } catch (e) { ctx = new AC(); } // old webkit contexts reject options
+      this.ctx = ctx;
       this.master = ctx.createGain();
       this.master.gain.value = this.muted ? 0 : this.vol;
       this.comp = ctx.createDynamicsCompressor();
@@ -70,7 +72,10 @@
       return true;
     }
 
-    resume() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); }
+    resume() { // 'interrupted' is what iOS reports after a phone call, Siri or an app switch
+      if (!this.ctx || (this.ctx.state !== 'suspended' && this.ctx.state !== 'interrupted')) return;
+      try { const p = this.ctx.resume(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* needs a user gesture; the next press retries */ }
+    }
     clock() { return this.ctx ? this.ctx.currentTime : performance.now() / 1000; }
     setMuted(m) {
       this.muted = m;

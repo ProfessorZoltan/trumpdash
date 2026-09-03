@@ -1,6 +1,8 @@
 // Real-time screenshot harness: drives headless Chrome over CDP, polls the game's
 // debug state (?debug=1) and captures screenshots when conditions are met.
-// usage: node tools/shoot.js <plan> [outDir]   plans: ending, tour, audio
+// usage: node tools/shoot.js <plan> [outDir]   plans: ending, tour, audio, ... (see PLANS)
+// MOBILE=landscape|portrait emulates a phone (844x390 @2x, touch); plan actions may then `tap` canvas
+// coordinates (touch taps on mobile, mouse clicks otherwise), `rotate` the phone, or `check` a JS expression.
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -97,6 +99,42 @@ const PLANS = {
     ['q_hop', (s) => s.ending && s.ending.phase === 'hop' && s.ending.ufoX > 200],
     ['q_complete', (s) => s.state === 'complete'],
   ], timeout: 45000 },
+  // ---- touch UI (run with MOBILE=landscape) ----
+  mobile_menu: { url: '?noaudio=1&mute=1&debug=1&practice=0', shots: [
+    ['mm_menu', (s) => s.state === 'menu', { check: "({coarse: matchMedia('(pointer: coarse)').matches, touch: TD_GAME.touch, fs: TD_GAME.fsAvailable, rotate: getComputedStyle(document.getElementById('rotate')).display, canvas: document.getElementById('game').getBoundingClientRect().toJSON(), vw: innerWidth, vh: innerHeight, dpr: devicePixelRatio})" }],
+    ['mm_practice_on', (s) => s.state === 'menu' && !s.practice, { tap: [85, 128] }],
+    ['mm_pick', (s) => s.state === 'menu' && s.practice, { tap: [560, 188] }],
+    ['mm_start', (s) => s.state === 'menu' && s.levelIdx === 1, { tap: [560, 188] }],
+    ['mm_playing', (s) => s.state === 'playing' && s.beat > 1.5, { tap: [923, 28] }],
+    ['mm_paused', (s) => s.state === 'paused', { tap: [375, 219] }],
+    ['mm_resumed', (s) => s.state === 'playing' && s.beat > 2.5, { tap: [923, 28] }],
+    ['mm_quit', (s) => s.state === 'paused', { tap: [480, 331] }],
+    ['mm_menu_again', (s) => s.state === 'menu', { tap: [85, 128] }],
+    ['mm_done', (s) => s.state === 'menu' && !s.practice],
+  ], timeout: 40000 },
+  mobile_rotate: { url: '?level=greenland&noaudio=1&mute=1&start=0&debug=1&practice=0', shots: [
+    ['mr_playing', (s) => s.state === 'playing' && s.beat > 1, { rotate: 'portrait' }],
+    ['mr_paused', (s) => s.state === 'paused', { check: "({rotate: getComputedStyle(document.getElementById('rotate')).display, fsBtn: getComputedStyle(document.getElementById('rotate-fs')).display, canvas: document.getElementById('game').getBoundingClientRect().toJSON()})" }],
+    ['mr_back', (s) => s.state === 'paused', { rotate: 'landscape' }],
+    ['mr_landscape', (s) => s.state === 'paused', { check: "({rotate: getComputedStyle(document.getElementById('rotate')).display, canvas: document.getElementById('game').getBoundingClientRect().toJSON()})" }],
+  ], timeout: 30000 },
+  // ---- the same buttons with a mouse ----
+  desk_pause: { url: '?level=venezuela&noaudio=1&mute=1&start=0&debug=1&practice=0', shots: [
+    ['dp_playing', (s) => s.state === 'playing' && s.beat > 1.5, { tap: [923, 28] }],
+    ['dp_view', (s) => s.state === 'paused'],
+    ['dp_paused', (s) => s.state === 'paused', { tap: [585, 219] }],
+    ['dp_restarted', (s) => s.state === 'playing' && s.attempt === 2 && s.beat > 0.5, { tap: [923, 28] }],
+    ['dp_paused2', (s) => s.state === 'paused' && !s.practice, { tap: [375, 275] }],
+    ['dp_practice', (s) => s.state === 'paused' && s.practice && s.runPractice, { tap: [375, 219] }],
+    ['dp_resumed', (s) => s.state === 'playing', { tap: [923, 28] }],
+    ['dp_paused3', (s) => s.state === 'paused', { tap: [375, 275] }],
+    ['dp_done', (s) => s.state === 'paused' && !s.practice],
+  ], timeout: 40000 },
+  complete_tap: { url: '?level=greenland&autoplay=1&noaudio=1&mute=1&start=146&debug=1&practice=0', shots: [
+    ['ct_view', (s) => s.state === 'complete'],
+    ['ct_complete', (s) => s.state === 'complete', { tap: [480, 443] }],
+    ['ct_menu', (s) => s.state === 'menu'],
+  ], timeout: 40000 },
   probe: { url: process.env.PROBE_URL || '?debug=1', shots: [
     ['probe', (s) => { if (s.frames % 40 < 3) console.log('PROBE', JSON.stringify({ frames: s.frames, state: s.state, level: s.level, beat: +(s.beat || 0).toFixed(2), attempt: s.attempt, gk: s.gk, song: +(s.song || 0).toFixed(2), err: s.err })); return s.frames > 420; }],
   ], timeout: 15000 },
@@ -152,6 +190,26 @@ class CDP {
   const cdp = new CDP(ws);
   await cdp.send('Page.enable');
   await cdp.send('Runtime.enable');
+  const MOBILE = process.env.MOBILE || '';
+  const metrics = (mode) => { const p = mode === 'portrait'; return { width: p ? 390 : 844, height: p ? 844 : 390, deviceScaleFactor: 2, mobile: true, screenWidth: p ? 390 : 844, screenHeight: p ? 844 : 390, screenOrientation: { type: p ? 'portraitPrimary' : 'landscapePrimary', angle: p ? 0 : 90 } }; };
+  if (MOBILE) {
+    await cdp.send('Emulation.setDeviceMetricsOverride', metrics(MOBILE));
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    await cdp.send('Emulation.setEmitTouchEventsForMouse', { enabled: true, configuration: 'mobile' });
+  }
+  const tap = async (cx, cy) => { // canvas-space point -> viewport CSS px -> touch tap or mouse click
+    const pt = await cdp.eval(`(function(){const r=document.getElementById('game').getBoundingClientRect();return {x:r.left+${cx}/960*r.width,y:r.top+${cy}/540*r.height};})()`);
+    if (MOBILE) {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: pt.x, y: pt.y, id: 1 }] });
+      await sleep(70);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    } else {
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: pt.x, y: pt.y, button: 'left', clickCount: 1 });
+      await sleep(70);
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: pt.x, y: pt.y, button: 'left', clickCount: 1 });
+    }
+    await sleep(150);
+  };
   await cdp.send('Page.navigate', { url: BASE + plan.url });
   const t0 = Date.now();
   let idx = 0, lastState = null;
@@ -171,6 +229,9 @@ class CDP {
           await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: action.key, code, windowsVirtualKeyCode: vk });
           await sleep(60);
         }
+        if (action && action.tap) await tap(action.tap[0], action.tap[1]);
+        if (action && action.rotate) { await cdp.send('Emulation.setDeviceMetricsOverride', metrics(action.rotate)); await sleep(400); }
+        if (action && action.check) console.log('CHECK', name, JSON.stringify(await cdp.eval(action.check)));
         const shot = await cdp.send('Page.captureScreenshot', { format: 'png' });
         fs.writeFileSync(path.join(OUT, name + '.png'), Buffer.from(shot.result.data, 'base64'));
         console.log(`${name}: beat=${(s.beat || 0).toFixed(2)} state=${s.state} attempt=${s.attempt} checkpoints=${s.checkpoints} barrels=${s.stats && s.stats.barrels} autoplay=${s.autoplay} ending=${s.ending ? s.ending.phase : '-'} audio=${s.audio}`);

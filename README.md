@@ -70,12 +70,25 @@ returning players never run a mix of old and new modules.
 | --- | --- |
 | ← → / 1–6 / click a card | Choose a level on the menu |
 | Space / ↑ / W / Enter / click / tap | Start, and jump (hold to keep jumping, like Geometry Dash) |
-| Esc | Pause |
+| Esc, or the ⏸ button top-right | Pause (the pause screen has Resume / Restart / Practice / Sound / Quit buttons) |
 | R | Restart from the beginning |
-| P | Toggle practice mode (auto checkpoints every few bars, all flags stay visible) |
-| M | Mute |
+| P, or the PRACTICE toggle | Toggle practice mode (auto checkpoints every few bars, all flags stay visible) |
+| M, or the SOUND toggle | Mute |
+| F, or the ⛶ button on the menu | Fullscreen (on Android this also locks landscape) |
 | H | Show hitboxes |
 | A | Toggle autoplay (watch mode) |
+
+### On a phone
+
+Everything is reachable by touch: tap anywhere to jump and hold to keep jumping, tap a level card
+to select it and again to start, and use the on-screen buttons for pause, restart, practice, sound
+and fullscreen. The jump stays held while *any* finger is on the screen, so two-thumb tapping works
+and a resting thumb never cancels a jump. The canvas is fitted to the safe area of the screen
+(notches and the home indicator are avoided) and refitted when the browser bar collapses or the
+phone rotates. Portrait phones get a "rotate your phone" screen, and a run in progress pauses when
+the phone is turned. `manifest.json` plus the Apple meta tags in `index.html` make "Add to Home
+Screen" launch the game landscape and chrome-free; the icons in `icons/` are rendered from the
+sprite sheet by `node tools/make_icons.js`.
 
 ## How the rhythm works
 
@@ -111,7 +124,12 @@ the frame rate stutters.
 * `node tools/shoot.js <plan> [outDir]` drives headless Chrome over the DevTools protocol
   (server must be running on port 8765) and captures screenshots. Plans: `menu`, `tour`,
   `ending`, `practice`, `audio` (Venezuela), `tour2`, `ending2` (Hormuz) and `tour3`, `ending3`
-  (Greenland), `tour4`, `ending4` (Canada), `tour5`, `ending5` (Panama), `tour6`, `ending6` (Moon). Set `PORT=` to run several at once.
+  (Greenland), `tour4`, `ending4` (Canada), `tour5`, `ending5` (Panama), `tour6`, `ending6` (Moon),
+  plus `desk_pause` and `complete_tap` (clicking the on-screen buttons) and, with `MOBILE=landscape`,
+  `mobile_menu` and `mobile_rotate`, which emulate a phone with touch and walk the touch UI. Set
+  `PORT=` to run several at once.
+* `node tools/make_icons.js` regenerates `icons/` (home-screen icons and the social preview) from the
+  running game.
 
 Debug URL parameters: `?level=greenland|venezuela|hormuz|canada|panama|moon`, `?autoplay=1`, `?start=<beat>`, `?noaudio=1`, `?mute=1`,
 `?practice=1`, `?debug=1`.
@@ -134,6 +152,9 @@ src/physics.js           deterministic player physics + collisions (spikes, bloc
 src/audio.js             instruments, scheduler and sound effects
 src/render.js            canvas rendering, HUD, level-select menu, truck / toll-booth / map / border-sign / canal-gate / moon-plaque endings
 src/game.js              game loop, input, state machine, ending cutscenes
+manifest.json            home-screen install (landscape, fullscreen)
+icons/                   app icons + social preview (generated)
 tools/verify_level.js    completability + timing-window verifier
-tools/shoot.js           headless screenshot harness
+tools/shoot.js           headless screenshot harness (desktop or emulated phone)
+tools/make_icons.js      renders icons/ from the sprite sheet
 ```

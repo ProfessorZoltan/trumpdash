@@ -8,20 +8,82 @@ html, body {
   -webkit-user-select: none;
   user-select: none;
   touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
 }
+/* The play area is the viewport minus the phone's safe areas (notch, home indicator); game.js fits
+   the 16:9 canvas inside it and refits on rotation, URL-bar collapse and fullscreen. */
 #wrap {
   position: fixed;
-  inset: 0;
+  top: env(safe-area-inset-top, 0px);
+  right: env(safe-area-inset-right, 0px);
+  bottom: env(safe-area-inset-bottom, 0px);
+  left: env(safe-area-inset-left, 0px);
   display: flex;
   align-items: center;
   justify-content: center;
   background: radial-gradient(ellipse at center, #10142a 0%, #05060f 70%);
 }
 #game {
-  width: min(100vw, calc(100vh * 16 / 9));
+  display: block;
+  width: min(100vw, calc(100vh * 16 / 9)); /* fallback until game.js sizes it */
   height: auto;
   aspect-ratio: 16 / 9;
   box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
   cursor: pointer;
   outline: none;
+}
+/* Portrait phones: cover the game and ask for landscape. game.js mirrors this media query to pause a run. */
+#rotate {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  box-sizing: border-box;
+  background: radial-gradient(ellipse at center, #10142a 0%, #05060f 70%);
+  color: #fff;
+}
+#rotate .phone {
+  width: 56px;
+  height: 100px;
+  border: 4px solid #ffd400;
+  border-radius: 12px;
+  margin-bottom: 26px;
+  animation: td-rotate 2s ease-in-out infinite;
+}
+@keyframes td-rotate {
+  0%, 25% { transform: rotate(0deg); }
+  65%, 100% { transform: rotate(90deg); }
+}
+#rotate h1 {
+  margin: 0 0 8px;
+  font: bold 28px Impact, "Arial Black", "Segoe UI Black", sans-serif;
+  letter-spacing: 1px;
+  color: #ffd400;
+}
+#rotate p {
+  margin: 0 0 22px;
+  font-size: 15px;
+  color: #cfd3ff;
+}
+#rotate button {
+  display: none;
+  font: bold 16px Impact, "Arial Black", "Segoe UI Black", sans-serif;
+  letter-spacing: 1px;
+  color: #1a0a0a;
+  background: #ffd400;
+  border: 0;
+  border-radius: 10px;
+  padding: 14px 26px;
+  cursor: pointer;
+}
+#rotate.fs button { display: inline-block; }
+@media (orientation: portrait) and (pointer: coarse) and (max-width: 720px) {
+  #rotate { display: flex; }
 }

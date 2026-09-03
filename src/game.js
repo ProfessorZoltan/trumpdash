@@ -20,7 +20,9 @@
     level: null, st: null, attempt: 0, attemptX: null,
     practice: lsGet(LS.practice, '0') === '1',
     muted: lsGet(LS.muted, '0') === '1',
-    showHitboxes: false, touch: false,
+    // touch: coarse-pointer devices get tap wording and touch-sized hit slop from the first frame
+    showHitboxes: false, touch: !!(window.matchMedia && matchMedia('(pointer: coarse)').matches), touches: new Set(),
+    fsAvailable: false, fullscreen: false,
     held: false, beat: 0, beatPulse: 0, time: 0, camX: -C.PLAYER_X, camLock: null,
     particles: [], floaters: [], shake: 0,
     stats: null, deathMsg: null, deadAt: 0, checkpoint: 0, checkpoints: [], lastCpCheck: -1,
@@ -134,6 +136,28 @@
     audio.startSong(G.pausedBeat, 0.4);
   }
   function quitToMenu() { audio.stopSong(true); audio.engineStop(); G.state = 'menu'; G.st = null; G.ending = null; G.camX = -C.PLAYER_X; }
+  function restartRun() {
+    if (G.state !== 'playing' && G.state !== 'paused' && G.state !== 'dead') return;
+    audio.stopSong(true); G.checkpoint = 0; G.checkpoints = []; G.lastCpCheck = -1; G.stats.combo = 0; G.runPractice = G.practice; startAttempt(0);
+  }
+  function togglePractice() {
+    if (G.state !== 'menu' && G.state !== 'paused') return;
+    G.practice = !G.practice; lsSet(LS.practice, G.practice ? '1' : '0');
+    if (G.state === 'paused' && G.practice) G.runPractice = true; // once practice is used, the run counts as practice
+  }
+  function toggleMute() { G.muted = !G.muted; audio.setMuted(G.muted); lsSet(LS.muted, G.muted ? '1' : '0'); }
+  // On-screen buttons (drawn by render.js, hit-tested in press)
+  function uiAction(id) {
+    switch (id) {
+      case 'pause': if (G.state === 'playing') togglePause(); break;
+      case 'resume': if (G.state === 'paused') resume(); break;
+      case 'restart': restartRun(); break;
+      case 'practice': togglePractice(); break;
+      case 'mute': toggleMute(); break;
+      case 'quit': case 'menu': if (G.state === 'paused' || G.state === 'complete') quitToMenu(); break;
+      case 'fullscreen': toggleFullscreen(); break;
+    }
+  }
 
   // ---------- events from physics ----------
   function nearestJumpBeat(beat) {
@@ -480,6 +504,12 @@
   function press(pt) {
     if (!G.noAudio) audio.init();
     audio.resume();
+    if (pt) { // on-screen buttons first; their geometry lives in render.js so drawing and hit-testing agree
+      const slop = G.touch ? 10 : 2;
+      for (const b of R.uiButtons(G)) {
+        if (pt.x >= b.x - slop && pt.x <= b.x + b.w + slop && pt.y >= b.y - slop && pt.y <= b.y + b.h + slop) { uiAction(b.id); return; }
+      }
+    }
     switch (G.state) {
       case 'menu': {
         if (pt) {
@@ -512,15 +542,11 @@
       case 'ArrowRight': if (G.state === 'menu') selectLevel(G.levelIdx + 1); break;
       case 'Digit1': case 'Digit2': case 'Digit3': case 'Digit4': case 'Digit5': case 'Digit6': case 'Digit7': case 'Digit8': case 'Digit9': if (G.state === 'menu') { const i = parseInt(e.code.slice(5), 10) - 1; if (i < LEVELS.length) selectLevel(i); } break;
       case 'Escape': if (G.state === 'playing' || G.state === 'paused') togglePause(); break;
-      case 'KeyR': if (G.state === 'playing' || G.state === 'paused' || G.state === 'dead') { audio.stopSong(true); G.checkpoint = 0; G.checkpoints = []; G.lastCpCheck = -1; G.stats.combo = 0; G.runPractice = G.practice; startAttempt(0); } break;
+      case 'KeyR': restartRun(); break;
       case 'KeyQ': if (G.state === 'paused' || G.state === 'complete') quitToMenu(); break;
-      case 'KeyM': G.muted = !G.muted; audio.setMuted(G.muted); lsSet(LS.muted, G.muted ? '1' : '0'); break;
-      case 'KeyP':
-        if (G.state === 'menu' || G.state === 'paused') {
-          G.practice = !G.practice; lsSet(LS.practice, G.practice ? '1' : '0');
-          if (G.state === 'paused' && G.practice) G.runPractice = true; // once practice is used, the run counts as practice
-        }
-        break;
+      case 'KeyM': toggleMute(); break;
+      case 'KeyP': togglePractice(); break;
+      case 'KeyF': toggleFullscreen(); break;
       case 'KeyH': G.showHitboxes = !G.showHitboxes; break;
       case 'KeyA': G.autoplay = !G.autoplay; break;
     }
@@ -528,11 +554,73 @@
   window.addEventListener('keyup', (e) => { if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW' || e.code === 'Enter') release(); });
   canvas.addEventListener('mousedown', (e) => { e.preventDefault(); press(canvasPoint(e.clientX, e.clientY)); });
   window.addEventListener('mouseup', release);
-  canvas.addEventListener('touchstart', (e) => { e.preventDefault(); G.touch = true; const t = e.changedTouches[0]; press(t ? canvasPoint(t.clientX, t.clientY) : null); }, { passive: false });
-  window.addEventListener('touchend', (e) => { e.preventDefault(); release(); }, { passive: false });
-  window.addEventListener('touchcancel', release);
-  document.addEventListener('visibilitychange', () => { if (document.hidden && G.state === 'playing') togglePause(); });
-  window.addEventListener('blur', () => { release(); if (G.state === 'playing') togglePause(); });
+  // Touch: the jump button is "held" while any finger is on the canvas. Every new finger is a press (so
+  // taps drive the menus and two-thumb tapping works) and the hold ends only when the last tracked
+  // finger lifts, so a resting thumb never cancels a jump.
+  canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault(); G.touch = true;
+    for (const t of e.changedTouches) { G.touches.add(t.identifier); press(canvasPoint(t.clientX, t.clientY)); }
+  }, { passive: false });
+  const touchUp = (e) => {
+    if (e.target === canvas && e.cancelable) e.preventDefault(); // no synthetic clicks; DOM buttons keep theirs
+    for (const t of e.changedTouches) G.touches.delete(t.identifier);
+    if (G.touches.size === 0) release();
+  };
+  window.addEventListener('touchend', touchUp, { passive: false });
+  window.addEventListener('touchcancel', touchUp, { passive: false });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { if (G.state === 'playing') togglePause(); }
+    else audio.resume(); // iOS leaves the context interrupted after a call, Siri or an app switch
+  });
+  window.addEventListener('blur', () => { G.touches.clear(); release(); if (G.state === 'playing') togglePause(); });
+
+  // ---------- screen fit, fullscreen, orientation ----------
+  // The canvas keeps its 960x540 bitmap; its CSS box is the largest 16:9 rectangle inside #wrap, which
+  // is inset by the phone's safe areas (style.css). Re-fit on every viewport change: rotation, the
+  // mobile URL bar collapsing, entering fullscreen.
+  const wrap = document.getElementById('wrap');
+  function fitCanvas() {
+    const cw = wrap.clientWidth, ch = wrap.clientHeight;
+    if (!cw || !ch) return;
+    const s = Math.min(cw / C.W, ch / C.H);
+    canvas.style.width = Math.round(C.W * s) + 'px';
+    canvas.style.height = Math.round(C.H * s) + 'px';
+  }
+  fitCanvas();
+  window.addEventListener('resize', fitCanvas);
+  window.addEventListener('orientationchange', () => { fitCanvas(); setTimeout(fitCanvas, 150); });
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', fitCanvas);
+
+  const docEl = document.documentElement;
+  const standalone = navigator.standalone === true || !!(window.matchMedia && (matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches));
+  G.fsAvailable = !standalone && !!(document.fullscreenEnabled || document.webkitFullscreenEnabled) && !!(docEl.requestFullscreen || docEl.webkitRequestFullscreen);
+  const isFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+  function toggleFullscreen() {
+    if (!G.fsAvailable) return;
+    try {
+      if (isFullscreen()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+      const p = (docEl.requestFullscreen || docEl.webkitRequestFullscreen).call(docEl);
+      // Android: lock landscape once fullscreen (the lock is only allowed in fullscreen)
+      const lock = () => { try { const o = screen.orientation; if (o && o.lock) { const q = o.lock('landscape'); if (q && q.catch) q.catch(() => {}); } } catch (e) { /* unsupported */ } };
+      if (p && p.then) p.then(lock, () => {}); else lock();
+    } catch (e) { /* unsupported */ }
+  }
+  const onFsChange = () => { G.fullscreen = isFullscreen(); fitCanvas(); setTimeout(fitCanvas, 150); };
+  document.addEventListener('fullscreenchange', onFsChange);
+  document.addEventListener('webkitfullscreenchange', onFsChange);
+  // Portrait phones: the rotate overlay in index.html covers the game (shown by the media query in
+  // style.css, mirrored here); pause a run when it appears.
+  const rotateEl = document.getElementById('rotate');
+  if (rotateEl && G.fsAvailable) {
+    rotateEl.classList.add('fs');
+    const btn = document.getElementById('rotate-fs');
+    if (btn) btn.addEventListener('click', toggleFullscreen);
+  }
+  const portraitMQ = window.matchMedia ? matchMedia('(orientation: portrait) and (pointer: coarse) and (max-width: 720px)') : null;
+  if (portraitMQ) {
+    const onRotate = () => { if (portraitMQ.matches && G.state === 'playing') togglePause(); fitCanvas(); setTimeout(fitCanvas, 150); };
+    if (portraitMQ.addEventListener) portraitMQ.addEventListener('change', onRotate); else if (portraitMQ.addListener) portraitMQ.addListener(onRotate);
+  }
 
   // ---------- loop ----------
   let last = performance.now();
@@ -543,7 +631,7 @@
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     frameCount++;
-    if (dbgEl) dbgEl.textContent = JSON.stringify({ frames: frameCount, now, time: G.time, state: G.state, level: G.level && G.level.def.id, beat: G.beat, attempt: G.attempt, checkpoints: G.checkpoints.length, practice: G.practice, runPractice: G.runPractice, best: G.best, pbest: G.pbest, wins: G.wins, pwins: G.pwins, autoplay: !!G.autoplay, x: G.st && G.st.x, grav: G.st && G.st.grav, speedMul: G.st && G.st.speedMul, gk: G.st && G.st.gk, song: audio.songTime(), ending: G.ending && { phase: G.ending.phase, trumpIn: G.ending.trumpIn, stamp1: G.ending.stamp1, stamp2: G.ending.stamp2, subSign: G.ending.subSign, arm: G.ending.arm, slide: G.ending.slide, flagY: G.ending.flagY, flag2Y: G.ending.flag2Y, gate: G.ending.gate, ship: G.ending.ship, typed: G.ending.typed, plaqueY: G.ending.plaqueY, ufoX: G.ending.ufoX, tolls: G.ending.tolls, tankers: G.ending.tankers.length, truckX: G.ending.truckX, truckX0: G.ending.truckX0 }, audio: audio.ctx ? audio.ctx.state + ':' + audio.ctx.currentTime.toFixed(2) + ':step' + audio.nextStep : 'none', stats: G.stats, err: G.lastError || null });
+    if (dbgEl) dbgEl.textContent = JSON.stringify({ frames: frameCount, now, time: G.time, state: G.state, level: G.level && G.level.def.id, beat: G.beat, attempt: G.attempt, checkpoints: G.checkpoints.length, practice: G.practice, runPractice: G.runPractice, best: G.best, pbest: G.pbest, wins: G.wins, pwins: G.pwins, autoplay: !!G.autoplay, touch: G.touch, levelIdx: G.levelIdx, fs: G.fsAvailable, fullscreen: G.fullscreen, x: G.st && G.st.x, grav: G.st && G.st.grav, speedMul: G.st && G.st.speedMul, gk: G.st && G.st.gk, song: audio.songTime(), ending: G.ending && { phase: G.ending.phase, trumpIn: G.ending.trumpIn, stamp1: G.ending.stamp1, stamp2: G.ending.stamp2, subSign: G.ending.subSign, arm: G.ending.arm, slide: G.ending.slide, flagY: G.ending.flagY, flag2Y: G.ending.flag2Y, gate: G.ending.gate, ship: G.ending.ship, typed: G.ending.typed, plaqueY: G.ending.plaqueY, ufoX: G.ending.ufoX, tolls: G.ending.tolls, tankers: G.ending.tankers.length, truckX: G.ending.truckX, truckX0: G.ending.truckX0 }, audio: audio.ctx ? audio.ctx.state + ':' + audio.ctx.currentTime.toFixed(2) + ':step' + audio.nextStep : 'none', stats: G.stats, err: G.lastError || null });
     try { update(dt, now / 1000); R.draw(ctx, G); }
     catch (err) { G.lastError = String(err && err.stack || err); console.error(err); }
     if (G.lastError) { ctx.fillStyle = '#ff5555'; ctx.font = '12px monospace'; ctx.textAlign = 'left'; G.lastError.split(String.fromCharCode(10)).slice(0, 4).forEach((l, i) => ctx.fillText(l, 10, 100 + i * 14)); }

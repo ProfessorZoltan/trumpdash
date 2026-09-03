@@ -1845,8 +1845,8 @@
     if (G.practice || G.runPractice) { text(ctx, G.practice ? 'PRACTICE MODE' : 'PRACTICE RUN', 16, ly, `bold 12px ${UI_FONT}`, '#7dffb0', 'left', 'rgba(0,0,0,0.8)', 3); ly += 18; }
     if (G.muted) { text(ctx, 'MUTED', 16, ly, `bold 12px ${UI_FONT}`, '#ff9', 'left', 'rgba(0,0,0,0.8)', 3); ly += 18; }
     if (G.autoplay) text(ctx, 'AUTOPLAY', 16, ly, `bold 12px ${UI_FONT}`, '#ff9', 'left', 'rgba(0,0,0,0.8)', 3);
-    drawCollectibleIcon(ctx, def.collectible.icon, W - 118, 10);
-    text(ctx, `${G.stats.coins}/${lv.totalCoins}`, W - 98, 20, `bold 16px ${TITLE_FONT}`, '#fff', 'left', 'rgba(0,0,0,0.8)', 3);
+    drawCollectibleIcon(ctx, def.collectible.icon, W - 176, 10);
+    text(ctx, `${G.stats.coins}/${lv.totalCoins}`, W - 156, 20, `bold 16px ${TITLE_FONT}`, '#fff', 'left', 'rgba(0,0,0,0.8)', 3);
     if (G.stats.combo >= 2 && G.st && !G.st.dead && G.state === 'playing') {
       const cy = G.st.grav === 1 ? GY - 100 - Math.min(60, G.stats.combo * 2) : CY + 100 + Math.min(60, G.stats.combo * 2);
       text(ctx, `ON BEAT ×${G.stats.combo}`, C.PLAYER_X, cy, `bold 16px ${TITLE_FONT}`, '#7dffb0', 'center', 'rgba(0,0,0,0.8)', 4);
@@ -1906,6 +1906,52 @@
     }
   }
 
+  // ---------------- on-screen buttons ----------------
+  // Geometry is shared with input hit-testing in game.js (TD_RENDER.uiButtons), so what is drawn is
+  // exactly what is tappable. Sizes are chosen for thumbs: a phone in landscape scales the canvas to
+  // roughly 0.7, so a 46 px button is a 32 px target plus the touch slop applied in game.js.
+  function uiButtons(G) {
+    const b = [], s = G.state;
+    if (s === 'menu') {
+      b.push({ id: 'practice', x: 14, y: 110, w: 142, h: 36, label: 'PRACTICE', value: G.practice ? 'ON' : 'OFF', on: G.practice });
+      b.push({ id: 'mute', x: 14, y: 152, w: 142, h: 36, label: 'SOUND', value: G.muted ? 'OFF' : 'ON', on: !G.muted });
+      if (G.fsAvailable) b.push({ id: 'fullscreen', x: W - 60, y: 8, w: 48, h: 40, icon: G.fullscreen ? 'exitfs' : 'fs' });
+    } else if (s === 'playing' || s === 'dead') {
+      b.push({ id: 'pause', x: W - 62, y: 8, w: 50, h: 40, icon: 'pause' });
+    } else if (s === 'paused') {
+      const x0 = W / 2 - 205, y0 = 196;
+      b.push({ id: 'resume', x: x0, y: y0, w: 200, h: 46, label: 'RESUME', primary: true });
+      b.push({ id: 'restart', x: x0 + 210, y: y0, w: 200, h: 46, label: 'RESTART' });
+      b.push({ id: 'practice', x: x0, y: y0 + 56, w: 200, h: 46, label: 'PRACTICE', value: G.practice ? 'ON' : 'OFF', on: G.practice });
+      b.push({ id: 'mute', x: x0 + 210, y: y0 + 56, w: 200, h: 46, label: 'SOUND', value: G.muted ? 'OFF' : 'ON', on: !G.muted });
+      b.push({ id: 'quit', x: x0, y: y0 + 112, w: 410, h: 46, label: 'QUIT TO MENU' });
+    } else if (s === 'complete') {
+      b.push({ id: 'menu', x: W / 2 - 140, y: 420, w: 280, h: 46, label: 'BACK TO MENU', primary: true });
+    }
+    return b;
+  }
+  function drawUiIcon(ctx, icon, cx, cy) {
+    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    if (icon === 'pause') { ctx.fillRect(cx - 9, cy - 9, 6, 18); ctx.fillRect(cx + 3, cy - 9, 6, 18); return; }
+    const enter = icon === 'fs', r = enter ? 9 : 4, a = 6; // corner brackets: arms point in (enter) or out (exit)
+    for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+      const x = cx + sx * r, y = cy + sy * r, d = enter ? -1 : 1;
+      ctx.beginPath(); ctx.moveTo(x + d * sx * a, y); ctx.lineTo(x, y); ctx.lineTo(x, y + d * sy * a); ctx.stroke();
+    }
+  }
+  function drawButtons(ctx, G) {
+    for (const b of uiButtons(G)) {
+      ctx.fillStyle = b.primary ? '#ffd400' : b.on ? 'rgba(20,110,60,0.92)' : 'rgba(0,0,0,0.65)';
+      roundRect(ctx, b.x, b.y, b.w, b.h, 10); ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = b.primary ? '#7a5a00' : b.on ? '#7dffb0' : 'rgba(255,255,255,0.55)'; ctx.stroke();
+      const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+      if (b.icon) { drawUiIcon(ctx, b.icon, cx, cy); continue; }
+      if (b.value != null) {
+        text(ctx, b.label, b.x + 14, cy + 1, `bold 15px ${TITLE_FONT}`, '#fff', 'left');
+        text(ctx, b.value, b.x + b.w - 14, cy + 1, `bold 15px ${TITLE_FONT}`, b.on ? '#7dffb0' : '#ff9d9d', 'right');
+      } else text(ctx, b.label, cx, cy + 1, `bold 16px ${TITLE_FONT}`, b.primary ? '#1a0a0a' : '#fff', 'center');
+    }
+  }
   function drawOverlayPanel(ctx, x, y, w, h) {
     ctx.fillStyle = 'rgba(5,6,20,0.88)'; roundRect(ctx, x, y, w, h, 16); ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 2; ctx.stroke();
@@ -2036,21 +2082,22 @@
     }
     const py = grid ? 434 : 392;
     if (blink) text(ctx, G.touch ? 'TAP TO DASH' : 'PRESS SPACE OR CLICK TO DASH', W / 2 + 60, py, `bold ${grid ? 22 : 26}px ${TITLE_FONT}`, '#fff', 'center', 'rgba(0,0,0,0.9)', 6);
-    text(ctx, `← →  or  1–${n}  or click a card to choose a level`, W / 2 + 60, py + 26, `13px ${UI_FONT}`, '#e8e8ff', 'center', 'rgba(0,0,0,0.8)', 3);
-    const lines = [
-      'SPACE / ↑ / CLICK / TAP — jump (hold to keep jumping)',
-      `P — practice mode with checkpoints [${G.practice ? 'ON' : 'OFF'}]     M — mute [${G.muted ? 'ON' : 'OFF'}]     ESC — pause     R — restart     H — hitboxes`,
+    text(ctx, G.touch ? 'TAP A CARD TO CHOOSE A LEVEL  ·  TAP IT AGAIN TO START' : `← →  or  1–${n}  or click a card to choose a level`, W / 2 + 60, py + 26, `13px ${UI_FONT}`, '#e8e8ff', 'center', 'rgba(0,0,0,0.8)', 3);
+    const lines = G.touch ? [
+      'TAP — jump (hold to keep jumping)     PAUSE button top-right during a run',
+      'Practice mode adds checkpoints. The toggles at the left are also on the pause screen.',
+    ] : [
+      'SPACE / ↑ / CLICK — jump (hold to keep jumping)',
+      'P — practice mode with checkpoints     M — mute     ESC — pause     R — restart     F — fullscreen     H — hitboxes',
     ];
     lines.forEach((l, i) => text(ctx, l, W / 2 + 60, (grid ? 480 : 460) + i * (grid ? 17 : 20), `${grid ? 12 : 13}px ${UI_FONT}`, '#e8e8ff', 'center', 'rgba(0,0,0,0.8)', 3));
     text(ctx, 'Jumps land on the beat: listen for the clap. Parody — not affiliated with any person, government or oil company.', W / 2, H - 16, `12px ${UI_FONT}`, 'rgba(255,255,255,0.75)', 'center', 'rgba(0,0,0,0.8)', 3);
   }
-  function drawPaused(ctx, G) {
-    drawOverlayPanel(ctx, W / 2 - 220, H / 2 - 110, 440, 220);
-    text(ctx, 'PAUSED', W / 2, H / 2 - 60, `bold 44px ${TITLE_FONT}`, '#fff', 'center');
-    text(ctx, 'SPACE / CLICK — resume', W / 2, H / 2 - 5, `16px ${UI_FONT}`, '#fff', 'center');
-    text(ctx, `P — practice mode [${G.practice ? 'ON' : 'OFF'}]     M — mute [${G.muted ? 'ON' : 'OFF'}]`, W / 2, H / 2 + 25, `16px ${UI_FONT}`, '#fff', 'center');
-    text(ctx, 'R — restart     Q — quit to menu', W / 2, H / 2 + 52, `16px ${UI_FONT}`, '#fff', 'center');
-    text(ctx, G.runPractice ? 'This run counts toward practice-mode records.' : 'Turning practice on makes this run count as practice.', W / 2, H / 2 + 82, `12px ${UI_FONT}`, '#cfd3ff', 'center');
+  function drawPaused(ctx, G) { // the buttons themselves come from uiButtons / drawButtons
+    drawOverlayPanel(ctx, W / 2 - 240, 116, 480, 310);
+    text(ctx, 'PAUSED', W / 2, 160, `bold 44px ${TITLE_FONT}`, '#fff', 'center');
+    text(ctx, G.runPractice ? 'This run counts toward practice-mode records.' : 'Turning practice on makes this run count as practice.', W / 2, 378, `12px ${UI_FONT}`, '#cfd3ff', 'center');
+    if (!G.touch) text(ctx, 'SPACE resume  ·  R restart  ·  P practice  ·  M mute  ·  Q quit', W / 2, 402, `12px ${UI_FONT}`, 'rgba(255,255,255,0.7)', 'center');
   }
   function drawComplete(ctx, G) {
     const def = G.level.def;
@@ -2075,7 +2122,7 @@
       text(ctx, k, W / 2 - 200, 226 + i * 28, `16px ${UI_FONT}`, '#cfd3ff', 'left');
       text(ctx, v, W / 2 + 200, 226 + i * 28, `bold 18px ${TITLE_FONT}`, i === 0 ? (G.runPractice ? '#8fd3ff' : '#7dffb0') : '#fff', 'right');
     });
-    if (Math.sin(G.time * 4) > -0.2) text(ctx, 'SPACE / CLICK — back to menu', W / 2, 445, `bold 20px ${TITLE_FONT}`, '#7dffb0', 'center');
+    if (!G.touch) text(ctx, 'or press SPACE', W / 2, 474, `11px ${UI_FONT}`, 'rgba(255,255,255,0.6)', 'center');
   }
 
   function draw(ctx, G) {
@@ -2087,7 +2134,7 @@
       const pal = paletteOf(def, 'drop');
       drawBackground(ctx, G, pal, def.backdrop);
       drawGround(ctx, G, pal, null);
-      if (G.state === 'menu') drawMenu(ctx, G);
+      if (G.state === 'menu') { drawMenu(ctx, G); drawButtons(ctx, G); }
       else text(ctx, 'LOADING…', W / 2, H / 2, `bold 30px ${TITLE_FONT}`, '#fff', 'center');
       ctx.restore();
       return;
@@ -2104,8 +2151,9 @@
     if (G.state === 'dead') drawDeath(ctx, G);
     if (G.state === 'paused') drawPaused(ctx, G);
     if (G.state === 'complete') drawComplete(ctx, G);
+    drawButtons(ctx, G);
     ctx.restore();
   }
 
-  root.TD_RENDER = { init, draw, palette, drawPose, menuCardRect, loadImage };
+  root.TD_RENDER = { init, draw, palette, drawPose, menuCardRect, loadImage, uiButtons };
 })(typeof window !== 'undefined' ? window : globalThis);
