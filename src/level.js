@@ -17,13 +17,31 @@
 
   function buildLevel(def) {
     C.setTempo(def.bpm);
-    const B = C.BLOCK, G = C.GROUND_Y, CY = C.CEIL_Y, JO = C.JUMP_OFFSET;
-    const bx = (b) => b * C.BEAT_PX;
+    const B = C.BLOCK, G = C.GROUND_Y, CY = C.CEIL_Y, JO = C.JUMP_OFFSET, BP = C.BEAT_PX;
     const objs = [];      // physical objects
     const deco = [];      // decoration only
     const gaps = [];      // water gaps in the floor {l, r} px
     const ceilings = [];  // ceiling segments (exist only around flipped sections) {l, r} px
+    const zones = [];     // speed zones (ice) {b0, b1, m} in beats; x0/x1 filled in at the end
     const jumpBeats = []; // beats where the player must press (music cue)
+    // Beat -> world x. Inside a speed zone the player covers BEAT_PX * m per beat, so the
+    // music grid stays exact while the screen scrolls faster. Zones must be declared (ICE)
+    // before anything placed inside or beyond them.
+    function xAtBeat(b) {
+      let x = 0, pb = 0;
+      for (const z of zones) {
+        if (b <= z.b0) break;
+        x += (z.b0 - pb) * BP;
+        const e = Math.min(b, z.b1);
+        x += (e - z.b0) * BP * z.m;
+        pb = e;
+        if (b <= z.b1) return x;
+      }
+      return x + (b - pb) * BP;
+    }
+    const bx = xAtBeat;
+    const mAt = (b) => { for (const z of zones) if (b >= z.b0 && b < z.b1) return z.m; return 1; };
+    function ICE(b0, b1, m) { zones.push({ b0, b1, m: m || 1.25 }); zones.sort((a, c) => a.b0 - c.b0); }
     let curH = 0;         // height (in blocks) the player is currently running on
     let flipped = false;  // gravity state at the current point of the level
     let ceilStart = 0;
@@ -66,7 +84,7 @@
     // A platform you jump onto (press on `press`, land on top)
     function P(press, w, h, skin, label) {
       const rel = h - curH;
-      const off = rel >= 2 ? 100 : 95;
+      const off = (rel >= 2 ? 100 : 95) * mAt(press); // jump geometry stretches with speed
       surfBlock(bx(press) + off, w, h, skin, label);
       jumpBeats.push(press);
       curH = h;
@@ -101,11 +119,11 @@
     // Floating naval mine (circular hazard)
     function MINE(beat, hPx, r) { objs.push({ t: 'mine', cx: bx(beat), cy: away(hPx), r: r || 16 }); }
     // Mines used like spikes: press on `press`, apex passes over the group
-    function MS(press, n) {
+    function MS(press, n, skin) {
       n = n || 1;
       // centre 18 px off the surface: the circle's far edge (34 px) matches a spike's hitbox height
       const left = bx(press + JO) - ((n - 1) * 30) / 2;
-      for (let i = 0; i < n; i++) objs.push({ t: 'mine', cx: left + i * 30, cy: away(18), r: 16 });
+      for (let i = 0; i < n; i++) objs.push({ t: 'mine', cx: left + i * 30, cy: away(18), r: 16, skin: skin || 'mine' });
       jumpBeats.push(press);
     }
     // A row of mines hanging over the lane: safe to run under, fatal to jump into
@@ -123,8 +141,9 @@
     }
     // Water gap you must jump across (press on `press`); floor only
     function GJ(press, w) {
-      const l = bx(press) + 40;
-      gaps.push({ l, r: l + (w || 60) });
+      const m = mAt(press);
+      const l = bx(press) + 40 * m;
+      gaps.push({ l, r: l + (w || 60) * m });
       jumpBeats.push(press);
     }
     function GAP(beatL, beatR) { gaps.push({ l: bx(beatL), r: bx(beatR) }); }
@@ -144,8 +163,9 @@
     function SCENE(beat, kind) { deco.push({ t: 'scene', x: bx(beat), kind }); }
     function GOAL(beat) { endBeat = beat; objs.push({ t: 'goal', x: bx(beat) }); }
 
-    def.build({ S, spikeRaw, blockRaw, slabRaw, OVER, P, DROP, O, PAD, COIN, CEIL, MINE, MS, MINES, DRONE, GJ, GAP, FLIP, FLIPRUN, SIGN, SCENE, GOAL, bx, JO, B, G, CY });
+    def.build({ S, spikeRaw, blockRaw, slabRaw, OVER, P, DROP, O, PAD, COIN, CEIL, MINE, MS, MINES, DRONE, GJ, GAP, FLIP, FLIPRUN, ICE, SIGN, SCENE, GOAL, bx, mAt, JO, B, G, CY });
     if (flipped) ceilings.push({ l: ceilStart, r: bx(endBeat) + 400 });
+    for (const z of zones) { z.x0 = xAtBeat(z.b0); z.x1 = xAtBeat(z.b1); }
 
     // ---- finalize ----
     let totalCoins = 0;
@@ -163,7 +183,7 @@
     gaps.sort((a, b) => a.l - b.l);
     ceilings.sort((a, b) => a.l - b.l);
     const jb = Array.from(new Set(jumpBeats)).sort((a, b) => a - b);
-    return { def, objs, deco, gaps, ceilings, jumpBeats: jb, jumpSet: new Set(jb), endBeat, totalCoins, lengthPx: bx(endBeat) };
+    return { def, objs, deco, gaps, ceilings, zones, xAtBeat, jumpBeats: jb, jumpSet: new Set(jb), endBeat, totalCoins, lengthPx: bx(endBeat) };
   }
 
   // A checkpoint may sit on an integer beat only if no press is required on that beat or its

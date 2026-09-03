@@ -54,6 +54,21 @@ const PLANS = {
   pracmode: { url: '?level=greenland&autoplay=1&noaudio=1&mute=1&start=146&debug=1&practice=1', shots: [
     ['prac_complete', (s) => s.state === 'complete' && s.runPractice === true && s.pwins && s.pwins.greenland >= 1],
   ], timeout: 40000 },
+  tour4: { url: '?level=canada&autoplay=1&noaudio=1&mute=1&start=0&debug=1', shots: [
+    ['c_start', (s) => s.beat >= 1.5], ['c_mountie', (s) => s.beat >= 20.35], ['c_sorry', (s) => s.beat >= 28.4],
+    ['c_parliament', (s) => s.beat >= 50.3], ['c_usmca', (s) => s.beat >= 64.4], ['c_ice', (s) => s.beat >= 70.3 && s.speedMul > 1],
+    ['c_iceorb', (s) => s.beat >= 74.6], ['c_timmies', (s) => s.beat >= 82.4], ['c_syrup', (s) => s.beat >= 93.3],
+    ['c_shack', (s) => s.beat >= 105.4], ['c_rink', (s) => s.beat >= 122.3 && s.speedMul > 1], ['c_tariff', (s) => s.beat >= 131.9],
+    ['c_finale', (s) => s.beat >= 148.4], ['c_approach', (s) => s.beat >= 157.5], ['c_complete', (s) => s.state === 'complete'],
+  ], timeout: 110000 },
+  ending4: { url: '?level=canada&autoplay=1&noaudio=1&mute=1&start=155&debug=1', shots: [
+    ['b_enter', (s) => s.ending && s.ending.phase === 'enter'],
+    ['b_stamp1', (s) => s.ending && s.ending.phase === 'stamp1' && s.ending.stamp1 >= 1],
+    ['b_stamp2', (s) => s.ending && s.ending.phase === 'stamp2' && s.ending.stamp2 >= 1],
+    ['b_flagdown', (s) => s.ending && s.ending.phase === 'flag' && s.ending.flagY <= 0.05 && s.ending.flag2Y < 0.3],
+    ['b_flagup', (s) => s.ending && s.ending.phase === 'flag' && s.ending.flag2Y >= 1],
+    ['b_complete', (s) => s.state === 'complete'],
+  ], timeout: 40000 },
   menu: { url: '?debug=1', shots: [
     ['menu_1', (s) => s.state === 'menu'],
     ['menu_2', (s) => s.state === 'menu', { key: 'ArrowRight' }],

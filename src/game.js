@@ -68,15 +68,15 @@
   }
   function startAttempt(beat) {
     G.attempt++;
-    G.st = PHYS.makeState(beat);
-    PHYS.resetObjects(G.level, beat * C.BEAT_PX);
+    G.st = PHYS.makeState(beat, G.level);
+    PHYS.resetObjects(G.level, G.level.xAtBeat(beat));
     G.stats.coins = G.level.objs.reduce((n, o) => n + (o.t === 'coin' && o.got ? 1 : 0), 0);
     if (beat === 0) { G.stats.combo = 0; G.stats.extra = 0; }
     G.state = 'playing';
     G.held = false;
     G.particles.length = 0; G.floaters.length = 0;
     G.deathMsg = null; G.ending = null; G.camLock = null;
-    G.attemptX = beat * C.BEAT_PX + 420;
+    G.attemptX = G.level.xAtBeat(beat) + 420;
     G.beat = beat;
     audio.startSong(beat, 0.6);
   }
@@ -110,12 +110,12 @@
     G.camLock = G.level.lengthPx - def.ending.camOffset;
     G.camX = G.camLock;
     audio.stopSong(true);
-    audio.endingPad(type === 'toll' ? 'em' : type === 'map' ? 'major' : 'am');
+    audio.endingPad(type === 'toll' ? 'em' : type === 'map' || type === 'sign' ? 'major' : 'am');
     if (type === 'truck') audio.engineStart();
     G.attemptX = null;
     G.ending = {
       type, phase: 'enter', t0: G.time, goalX: st.x, truckX0: st.x, truckX: st.x, wheel: 0,
-      stamp1: 0, stamp2: 0, subSign: 0, arm: 0, slide: 0, trumpIn: 0.0001, banner: null, bannerT: 0, bannerT0: 0, exhaustT: 0,
+      stamp1: 0, stamp2: 0, subSign: 0, arm: 0, slide: 0, flagY: 1, flag2Y: 0, trumpIn: 0.0001, banner: null, bannerT: 0, bannerT0: 0, exhaustT: 0,
       tankers: [], tolls: 0, nextTankerAt: 0,
     };
     recordBest(def.id, 100);
@@ -165,6 +165,9 @@
         case 'orb': audio.sfxOrb(); judge(ev); burst(ev.x, ev.y - 30 * ev.grav, 12, '#ffd400'); break;
         case 'pad': audio.sfxPad(); burst(ev.x, ev.y, 16, '#ffd400'); G.floaters.push({ text: ev.obj.label + '!', x: ev.x, y: up ? ev.y - 110 : ev.y + 130, t0: G.time, dur: 0.9, color: '#ffd400', size: 16 }); break;
         case 'flip': audio.sfxFlip(ev.grav); burst(ev.x, ev.y, 18, ev.grav === -1 ? '#4fc3ff' : '#ffd400'); G.floaters.push({ text: 'FLIP-FLOP!', x: ev.x, y: ev.y, t0: G.time, dur: 0.8, color: ev.grav === -1 ? '#4fc3ff' : '#ffd400', size: 18 }); break;
+        case 'zone':
+          if (ev.obj.m > 1) { audio.sfxWhoosh(0.35); G.floaters.push({ text: `ICE  ×${ev.obj.m}`, x: ev.x + 60, y: up ? ev.y - 100 : ev.y + 120, t0: G.time, dur: 0.9, color: '#8fe0ff', size: 18 }); }
+          break;
         case 'coin': audio.sfxCoin(); G.stats.coins++; burst(ev.obj.cx, ev.obj.cy, 10, '#ffd400'); G.floaters.push({ text: `+1 ${def.collectible.label.replace(/s$/, '').toUpperCase()}`, x: ev.obj.cx, y: ev.obj.cy - 24, t0: G.time, dur: 0.7, color: '#fff', size: 14 }); break;
         case 'land':
           for (let i = 0; i < 4; i++) G.particles.push({ x: ev.x + (Math.random() - 0.5) * 20, y: ev.y, vx: (Math.random() - 0.5) * 80 - 60, vy: (-40 - Math.random() * 60) * ev.grav, life: 0.3, maxLife: 0.3, size: 2 + Math.random() * 2, color: 'rgba(255,255,255,0.7)', gravity: 300 * ev.grav });
@@ -193,7 +196,7 @@
     if (!st.onGround || st.ground !== null || st.grav !== 1) return;
     if (!LV.checkpointOK(G.level, ib)) return;
     G.checkpoint = ib;
-    G.checkpoints.push(ib * C.BEAT_PX);
+    G.checkpoints.push(G.level.xAtBeat(ib));
     G.floaters.push({ text: 'CHECKPOINT', x: st.x, y: st.y - 90, t0: G.time, dur: 0.8, color: '#7dffb0', size: 16 });
     audio.sfxCheckpoint();
   }
@@ -240,6 +243,32 @@
           if (t >= 3.6) { next('done'); completeLevel(); }
           break;
         }
+      }
+      return;
+    }
+    if (e.type === 'sign') {
+      const sx = e.goalX + 250, sy = 175;
+      switch (e.phase) {
+        case 'enter':
+          e.trumpIn = 1;
+          if (t >= 0.9) next('stamp1');
+          break;
+        case 'stamp1':
+          e.stamp1 = Math.min(1, t / 0.32);
+          if (t >= 0.32 && !e.hit1) { e.hit1 = true; audio.sfxStamp(); G.shake = 14; burstInk(sx, sy, '#c8102e'); banner('51st STATE'); }
+          if (t >= 1.5) next('stamp2');
+          break;
+        case 'stamp2':
+          e.stamp2 = Math.min(1, t / 0.32);
+          if (t >= 0.32 && !e.hit2) { e.hit2 = true; audio.sfxStamp(); G.shake = 20; burstInk(sx, sy, '#ffd400'); banner('TRUMP'); }
+          if (t >= 1.7) { next('flag'); audio.sfxWhoosh(1.2); banner('LOWERING THE FLAG…'); }
+          break;
+        case 'flag':
+          e.flagY = Math.max(0, 1 - t / 1.2);
+          if (t >= 1.3) e.flag2Y = Math.min(1, (t - 1.3) / 1.2);
+          if (t >= 1.3 && !e.hit3) { e.hit3 = true; audio.sfxWhoosh(1.2); audio.fanfare(); banner('ANNEXED (POLITELY)'); G.stats.extra = 13; }
+          if (t >= 4.2) { next('done'); completeLevel(); }
+          break;
       }
       return;
     }
@@ -340,6 +369,9 @@
       }
       handleEvents(st);
       G.beat = st.t / C.BEAT_SEC;
+      if (st.speedMul > 1 && st.onGround && !st.dead) { // ice spray behind the feet
+        G.particles.push({ x: st.x - 12 - Math.random() * 10, y: st.y - (st.grav === 1 ? 2 : -2), vx: -120 - Math.random() * 120, vy: (-30 - Math.random() * 60) * st.grav, life: 0.3, maxLife: 0.3, size: 1.5 + Math.random() * 2, color: 'rgba(230,248,255,0.9)', gravity: 500 * st.grav });
+      }
       if (G.attemptX != null && st.x > G.attemptX + 400) G.attemptX = null;
       if (G.practice) maybeCheckpoint();
       if (st.dead) onDeath();
@@ -402,7 +434,7 @@
       case 'Space': case 'ArrowUp': case 'KeyW': case 'Enter': e.preventDefault(); press(null); break;
       case 'ArrowLeft': if (G.state === 'menu') selectLevel(G.levelIdx - 1); break;
       case 'ArrowRight': if (G.state === 'menu') selectLevel(G.levelIdx + 1); break;
-      case 'Digit1': case 'Digit2': case 'Digit3': case 'Digit4': if (G.state === 'menu') { const i = parseInt(e.code.slice(5), 10) - 1; if (i < LEVELS.length) selectLevel(i); } break;
+      case 'Digit1': case 'Digit2': case 'Digit3': case 'Digit4': case 'Digit5': if (G.state === 'menu') { const i = parseInt(e.code.slice(5), 10) - 1; if (i < LEVELS.length) selectLevel(i); } break;
       case 'Escape': if (G.state === 'playing' || G.state === 'paused') togglePause(); break;
       case 'KeyR': if (G.state === 'playing' || G.state === 'paused' || G.state === 'dead') { audio.stopSong(true); G.checkpoint = 0; G.checkpoints = []; G.lastCpCheck = -1; G.stats.combo = 0; G.runPractice = G.practice; startAttempt(0); } break;
       case 'KeyQ': if (G.state === 'paused' || G.state === 'complete') quitToMenu(); break;
@@ -435,7 +467,7 @@
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     frameCount++;
-    if (dbgEl) dbgEl.textContent = JSON.stringify({ frames: frameCount, now, time: G.time, state: G.state, level: G.level && G.level.def.id, beat: G.beat, attempt: G.attempt, checkpoints: G.checkpoints.length, practice: G.practice, runPractice: G.runPractice, best: G.best, pbest: G.pbest, wins: G.wins, pwins: G.pwins, autoplay: !!G.autoplay, x: G.st && G.st.x, grav: G.st && G.st.grav, song: audio.songTime(), ending: G.ending && { phase: G.ending.phase, trumpIn: G.ending.trumpIn, stamp1: G.ending.stamp1, stamp2: G.ending.stamp2, arm: G.ending.arm, slide: G.ending.slide, tolls: G.ending.tolls, tankers: G.ending.tankers.length, truckX: G.ending.truckX, truckX0: G.ending.truckX0 }, audio: audio.ctx ? audio.ctx.state + ':' + audio.ctx.currentTime.toFixed(2) + ':step' + audio.nextStep : 'none', stats: G.stats, err: G.lastError || null });
+    if (dbgEl) dbgEl.textContent = JSON.stringify({ frames: frameCount, now, time: G.time, state: G.state, level: G.level && G.level.def.id, beat: G.beat, attempt: G.attempt, checkpoints: G.checkpoints.length, practice: G.practice, runPractice: G.runPractice, best: G.best, pbest: G.pbest, wins: G.wins, pwins: G.pwins, autoplay: !!G.autoplay, x: G.st && G.st.x, grav: G.st && G.st.grav, speedMul: G.st && G.st.speedMul, song: audio.songTime(), ending: G.ending && { phase: G.ending.phase, trumpIn: G.ending.trumpIn, stamp1: G.ending.stamp1, stamp2: G.ending.stamp2, arm: G.ending.arm, slide: G.ending.slide, flagY: G.ending.flagY, flag2Y: G.ending.flag2Y, tolls: G.ending.tolls, tankers: G.ending.tankers.length, truckX: G.ending.truckX, truckX0: G.ending.truckX0 }, audio: audio.ctx ? audio.ctx.state + ':' + audio.ctx.currentTime.toFixed(2) + ':step' + audio.nextStep : 'none', stats: G.stats, err: G.lastError || null });
     try { update(dt, now / 1000); R.draw(ctx, G); }
     catch (err) { G.lastError = String(err && err.stack || err); console.error(err); }
     if (G.lastError) { ctx.fillStyle = '#ff5555'; ctx.font = '12px monospace'; ctx.textAlign = 'left'; G.lastError.split(String.fromCharCode(10)).slice(0, 4).forEach((l, i) => ctx.fillText(l, 10, 100 + i * 14)); }

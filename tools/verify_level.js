@@ -7,6 +7,7 @@ require('../src/level.js');
 require('../src/levels/greenland.js');
 require('../src/levels/venezuela.js');
 require('../src/levels/hormuz.js');
+require('../src/levels/canada.js');
 require('../src/physics.js');
 const C = globalThis.TD_CONST, P = globalThis.TD_PHYSICS, L = globalThis.TD_LEVEL, DEFS = globalThis.TD_LEVELS;
 
@@ -14,7 +15,7 @@ const HOLD = 0.06; // seconds the button is held per press
 
 function simulate(def, pressTimes, startBeat, untilT) {
   const level = L.buildLevel(def);
-  const st = P.makeState(startBeat);
+  const st = P.makeState(startBeat, level);
   const presses = pressTimes.slice().sort((a, b) => a - b);
   let pi = 0;
   while (!st.dead && !st.finished && st.t < untilT) {
@@ -71,7 +72,7 @@ function verify(def) {
   const cps = [];
   {
     const lv = L.buildLevel(def);
-    const st = P.makeState(0);
+    const st = P.makeState(0, lv);
     let last = 0, lastChecked = -1, pi = 0;
     while (!st.dead && !st.finished) {
       const t = st.t;

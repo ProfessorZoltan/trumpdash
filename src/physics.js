@@ -5,13 +5,19 @@
   const C = root.TD_CONST;
   const HW = C.PLAYER_W / 2, PH = C.PLAYER_H;
 
-  function makeState(beat) {
+  function makeState(beat, level) {
     return {
-      t: beat * C.BEAT_SEC, x: beat * C.BEAT_PX, y: C.GROUND_Y, vy: 0, grav: 1,
-      onGround: true, ground: null, airT: 0, rot: 0,
+      t: beat * C.BEAT_SEC, x: level && level.xAtBeat ? level.xAtBeat(beat) : beat * C.BEAT_PX, y: C.GROUND_Y, vy: 0, grav: 1,
+      onGround: true, ground: null, airT: 0, rot: 0, speedMul: 1,
       dead: false, deathBy: null, finished: false, oi: 0, events: [],
       prevTop: C.GROUND_Y - PH, prevBot: C.GROUND_Y,
     };
+  }
+  // Speed multiplier at a world x (ice zones make the run faster)
+  function speedAt(level, x) {
+    const zs = level.zones;
+    if (zs) for (let i = 0; i < zs.length; i++) { const z = zs[i]; if (x < z.x0) break; if (x < z.x1) return z.m; }
+    return 1;
   }
 
   function emit(st, type, obj) { st.events.push({ type, t: st.t, x: st.x, y: st.y, grav: st.grav, obj }); }
@@ -66,7 +72,9 @@
     if (st.onGround && held) launch(st, C.JUMP_VY, 'jump', null);
 
     st.t += dt;
-    st.x = st.t * C.SPEED;
+    const m = speedAt(level, st.x);
+    if (m !== st.speedMul) { st.speedMul = m; emit(st, 'zone', { m }); }
+    st.x += C.SPEED * m * dt;
     const pl = st.x - HW, pr = st.x + HW;
     if (!st.onGround) {
       st.vy += g * C.GRAVITY * dt;
@@ -159,5 +167,5 @@
     }
   }
 
-  root.TD_PHYSICS = { makeState, step, resetObjects, droneCY, overGround, overCeiling, hitTop, hitBot };
+  root.TD_PHYSICS = { makeState, step, resetObjects, droneCY, overGround, overCeiling, hitTop, hitBot, speedAt };
 })(typeof window !== 'undefined' ? window : globalThis);

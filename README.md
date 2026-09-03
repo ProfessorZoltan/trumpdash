@@ -1,6 +1,6 @@
 # Trump Dash
 
-A parody rhythm platformer in the style of Geometry Dash, with three levels you pick from the
+A parody rhythm platformer in the style of Geometry Dash, with four levels you pick from the
 main menu.
 
 **Level 1 — GREENLAND (Normal, 112 BPM).** The on-ramp. From Nuuk across the ice past polar
@@ -24,6 +24,13 @@ a torn-up **JCPOA**, **NATO Article 5**, and **CEASEFIRE** ceilings. It ends at 
 Hormuz, where the sign gets stamped **CLOSED** and then **TRUMP TOLL**, the barrier drops, and
 tankers queue up to pay $1B each.
 
+**Level 4 — THE 51st STATE (Hard, 120 BPM).** North across the border past Mounties, a
+**SORRY** sign, Parliament Hill columns, a **USMCA** wall cleared with the **TARIFF THREAT** pad,
+a **DOUBLE DOUBLE** coffee block, maple-syrup pits and a **25% TARIFF** ceiling. Two frozen lakes
+and a hockey rink are **ice zones**: the run speeds up on them (×1.25 and ×1.3) with pucks to
+clear. It ends at the border sign, where CANADA is stamped **51st STATE** and then **TRUMP**, the
+maple leaf comes down and a TRUMP flag goes up.
+
 Satire. Not affiliated with any person, government or oil company.
 
 ## Play
@@ -43,7 +50,7 @@ returning players never run a mix of old and new modules.
 
 | Key | Action |
 | --- | --- |
-| ← → / 1 / 2 / 3 / click a card | Choose a level on the menu |
+| ← → / 1–4 / click a card | Choose a level on the menu |
 | Space / ↑ / W / Enter / click / tap | Start, and jump (hold to keep jumping, like Geometry Dash) |
 | Esc | Pause |
 | R | Restart from the beginning |
@@ -62,7 +69,9 @@ functions in `src/level.js` (`S` spikes, `MS` mines, `OVER` blocks you jump over
 named beat puts the apex of the jump over the hazard. Drones bob on a two-beat cycle and are
 highest exactly when an on-beat jump passes under them. After a `FLIP` portal every helper
 places its objects relative to the ceiling instead of the floor, so a level reads the same
-right side up or upside down.
+right side up or upside down. `ICE(startBeat, endBeat, multiplier)` declares a speed zone: the
+builder's beat-to-pixel mapping integrates the multiplier, so obstacles inside the zone are
+still placed on exact beats while the world scrolls faster.
 
 The music is generated live with the Web Audio API. `src/audio.js` owns the instruments and the
 16th-note scheduler; each level's file owns its arrangement. Every beat that requires a jump
@@ -80,9 +89,9 @@ the frame rate stutters.
 * `node tools/shoot.js <plan> [outDir]` drives headless Chrome over the DevTools protocol
   (server must be running on port 8765) and captures screenshots. Plans: `menu`, `tour`,
   `ending`, `practice`, `audio` (Venezuela), `tour2`, `ending2` (Hormuz) and `tour3`, `ending3`
-  (Greenland). Set `PORT=` to run several at once.
+  (Greenland), `tour4`, `ending4` (Canada). Set `PORT=` to run several at once.
 
-Debug URL parameters: `?level=greenland|venezuela|hormuz`, `?autoplay=1`, `?start=<beat>`, `?noaudio=1`, `?mute=1`,
+Debug URL parameters: `?level=greenland|venezuela|hormuz|canada`, `?autoplay=1`, `?start=<beat>`, `?noaudio=1`, `?mute=1`,
 `?practice=1`, `?debug=1`.
 
 ## Files
@@ -96,9 +105,10 @@ src/level.js             level builder (beats -> objects, floor or ceiling), che
 src/levels/greenland.js  Greenland: layout, palettes, music, death messages
 src/levels/venezuela.js  Venezuela: layout, palettes, music, death messages
 src/levels/hormuz.js     Hormuz: layout, palettes, music, death messages
-src/physics.js           deterministic player physics + collisions (spikes, blocks, mines, drones, water, gravity flip)
+src/levels/canada.js     The 51st State: layout, palettes, music, death messages
+src/physics.js           deterministic player physics + collisions (spikes, blocks, mines, drones, water, gravity flip, ice speed zones)
 src/audio.js             instruments, scheduler and sound effects
-src/render.js            canvas rendering, HUD, level-select menu, truck / toll-booth / map endings
+src/render.js            canvas rendering, HUD, level-select menu, truck / toll-booth / map / border-sign endings
 src/game.js              game loop, input, state machine, ending cutscenes
 tools/verify_level.js    completability + timing-window verifier
 tools/shoot.js           headless screenshot harness
