@@ -1093,7 +1093,7 @@
     text(ctx, `ATTEMPT ${G.attempt}`, 16, 20, `bold 16px ${TITLE_FONT}`, '#fff', 'left', 'rgba(0,0,0,0.8)', 3);
     text(ctx, def.name, 16, 40, `bold 11px ${UI_FONT}`, 'rgba(255,255,255,0.75)', 'left', 'rgba(0,0,0,0.8)', 3);
     let ly = 58;
-    if (G.practice) { text(ctx, 'PRACTICE MODE', 16, ly, `bold 12px ${UI_FONT}`, '#7dffb0', 'left', 'rgba(0,0,0,0.8)', 3); ly += 18; }
+    if (G.practice || G.runPractice) { text(ctx, G.practice ? 'PRACTICE MODE' : 'PRACTICE RUN', 16, ly, `bold 12px ${UI_FONT}`, '#7dffb0', 'left', 'rgba(0,0,0,0.8)', 3); ly += 18; }
     if (G.muted) { text(ctx, 'MUTED', 16, ly, `bold 12px ${UI_FONT}`, '#ff9', 'left', 'rgba(0,0,0,0.8)', 3); ly += 18; }
     if (G.autoplay) text(ctx, 'AUTOPLAY', 16, ly, `bold 12px ${UI_FONT}`, '#ff9', 'left', 'rgba(0,0,0,0.8)', 3);
     drawCollectibleIcon(ctx, def.collectible.icon, W - 118, 10);
@@ -1218,14 +1218,18 @@
       roundRect(ctx, r.x, r.y, r.w, r.h, 12); ctx.stroke();
       ctx.shadowBlur = 0;
       drawThumb(ctx, def, r.x + 10, r.y + 10, r.w - 20, 100, G);
-      text(ctx, `${i + 1}. ${def.name}`, r.x + 14, r.y + 132, `bold ${small ? 20 : 24}px ${TITLE_FONT}`, '#fff', 'left');
+      text(ctx, `${i + 1}. ${def.name}`, r.x + 14, r.y + 128, `bold ${small ? 20 : 24}px ${TITLE_FONT}`, '#fff', 'left');
       const diffCol = def.difficulty === 'INSANE' ? '#c8102e' : def.difficulty === 'HARD' ? '#ff8c00' : '#2ecc71';
-      ctx.fillStyle = diffCol; roundRect(ctx, r.x + r.w - 82, r.y + 121, 68, 22, 11); ctx.fill();
-      text(ctx, def.difficulty, r.x + r.w - 48, r.y + 132, `bold 11px ${TITLE_FONT}`, '#fff', 'center');
-      text(ctx, `${def.tagline}  ·  ${def.bpm} BPM`, r.x + 14, r.y + 156, `${small ? 12 : 13}px ${UI_FONT}`, '#cfd3ff', 'left');
-      const best = G.best[def.id] || 0, wins = G.wins[def.id] || 0;
-      text(ctx, `BEST ${best.toFixed(0)}%   ·   CLEARED ${wins}×`, r.x + 14, r.y + 184, `bold ${small ? 12 : 13}px ${TITLE_FONT}`, '#7dffb0', 'left');
-      if (sel && blink) text(ctx, '▶', r.x + r.w - 22, r.y + 184, `bold 16px ${TITLE_FONT}`, '#ffd400', 'center');
+      ctx.fillStyle = diffCol; roundRect(ctx, r.x + r.w - 82, r.y + 117, 68, 22, 11); ctx.fill();
+      text(ctx, def.difficulty, r.x + r.w - 48, r.y + 128, `bold 11px ${TITLE_FONT}`, '#fff', 'center');
+      text(ctx, `${def.tagline}  ·  ${def.bpm} BPM`, r.x + 14, r.y + 149, `${small ? 12 : 13}px ${UI_FONT}`, '#cfd3ff', 'left');
+      const sf = `bold ${small ? 11 : 12}px ${TITLE_FONT}`;
+      const best = G.best[def.id] || 0, wins = G.wins[def.id] || 0, pbest = G.pbest[def.id] || 0, pwins = G.pwins[def.id] || 0;
+      text(ctx, 'REGULAR', r.x + 14, r.y + 172, sf, '#ffffff', 'left');
+      text(ctx, `BEST ${best.toFixed(0)}%  ·  CLEARED ${wins}×`, r.x + 78, r.y + 172, sf, '#7dffb0', 'left');
+      text(ctx, 'PRACTICE', r.x + 14, r.y + 191, sf, '#ffffff', 'left');
+      text(ctx, `BEST ${pbest.toFixed(0)}%  ·  CLEARED ${pwins}×`, r.x + 78, r.y + 191, sf, '#8fd3ff', 'left');
+      if (sel && blink) text(ctx, '▶', r.x + r.w - 22, r.y + 191, `bold 16px ${TITLE_FONT}`, '#ffd400', 'center');
     }
     if (blink) text(ctx, G.touch ? 'TAP TO DASH' : 'PRESS SPACE OR CLICK TO DASH', W / 2 + 60, 392, `bold 26px ${TITLE_FONT}`, '#fff', 'center', 'rgba(0,0,0,0.9)', 6);
     text(ctx, '← →  or  1 / 2 / 3  or click a card to choose a level', W / 2 + 60, 420, `13px ${UI_FONT}`, '#e8e8ff', 'center', 'rgba(0,0,0,0.8)', 3);
@@ -1241,7 +1245,8 @@
     text(ctx, 'PAUSED', W / 2, H / 2 - 60, `bold 44px ${TITLE_FONT}`, '#fff', 'center');
     text(ctx, 'SPACE / CLICK — resume', W / 2, H / 2 - 5, `16px ${UI_FONT}`, '#fff', 'center');
     text(ctx, `P — practice mode [${G.practice ? 'ON' : 'OFF'}]     M — mute [${G.muted ? 'ON' : 'OFF'}]`, W / 2, H / 2 + 25, `16px ${UI_FONT}`, '#fff', 'center');
-    text(ctx, 'R — restart     Q — quit to menu', W / 2, H / 2 + 55, `16px ${UI_FONT}`, '#fff', 'center');
+    text(ctx, 'R — restart     Q — quit to menu', W / 2, H / 2 + 52, `16px ${UI_FONT}`, '#fff', 'center');
+    text(ctx, G.runPractice ? 'This run counts toward practice-mode records.' : 'Turning practice on makes this run count as practice.', W / 2, H / 2 + 82, `12px ${UI_FONT}`, '#cfd3ff', 'center');
   }
   function drawComplete(ctx, G) {
     const def = G.level.def;
@@ -1251,7 +1256,10 @@
     text(ctx, def.complete.quote, W / 2, 186, `italic 15px ${UI_FONT}`, '#ffe9a0', 'center');
     const s = G.stats;
     const acc = s.jumps ? Math.round(((s.perfect + s.good) / s.jumps) * 100) : 0;
+    const mode = G.runPractice ? 'PRACTICE MODE' : 'REGULAR MODE';
+    const cleared = G.runPractice ? G.pwins[def.id] : G.wins[def.id];
     const rows = [
+      ['Counted as', `${mode}  (cleared ${cleared || 0}×)`],
       ['Attempts', `${G.attempt}`],
       [`${def.collectible.label[0].toUpperCase() + def.collectible.label.slice(1)} collected`, `${s.coins} / ${G.level.totalCoins}`],
       ['On-beat jumps', `${s.perfect + s.good} / ${s.jumps}  (${acc}%)`],
@@ -1260,10 +1268,10 @@
       [def.complete.statLabel, `${s.extra || 0}`],
     ];
     rows.forEach(([k, v], i) => {
-      text(ctx, k, W / 2 - 200, 236 + i * 30, `16px ${UI_FONT}`, '#cfd3ff', 'left');
-      text(ctx, v, W / 2 + 200, 236 + i * 30, `bold 18px ${TITLE_FONT}`, '#fff', 'right');
+      text(ctx, k, W / 2 - 200, 226 + i * 28, `16px ${UI_FONT}`, '#cfd3ff', 'left');
+      text(ctx, v, W / 2 + 200, 226 + i * 28, `bold 18px ${TITLE_FONT}`, i === 0 ? (G.runPractice ? '#8fd3ff' : '#7dffb0') : '#fff', 'right');
     });
-    if (Math.sin(G.time * 4) > -0.2) text(ctx, 'SPACE / CLICK — back to menu', W / 2, 440, `bold 20px ${TITLE_FONT}`, '#7dffb0', 'center');
+    if (Math.sin(G.time * 4) > -0.2) text(ctx, 'SPACE / CLICK — back to menu', W / 2, 445, `bold 20px ${TITLE_FONT}`, '#7dffb0', 'center');
   }
 
   function draw(ctx, G) {

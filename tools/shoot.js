@@ -42,6 +42,18 @@ const PLANS = {
     ['m_slid', (s) => s.ending && s.ending.phase === 'slide' && s.ending.slide >= 1],
     ['m_complete', (s) => s.state === 'complete'],
   ], timeout: 40000 },
+  flip: { url: '?level=greenland&autoplay=1&noaudio=1&mute=1&start=62&debug=1', shots: [
+    ['f_before', (s) => s.beat >= 66.2 && s.grav === 1],
+    ['f_flipped', (s) => s.beat >= 67.2 && s.grav === -1],
+    ['f_running', (s) => s.beat >= 70.35 && s.grav === -1],
+    ['f_back', (s) => s.beat >= 87.2 && s.grav === 1],
+  ], timeout: 40000 },
+  regmode: { url: '?level=greenland&autoplay=1&noaudio=1&mute=1&start=146&debug=1&practice=0', shots: [
+    ['reg_complete', (s) => s.state === 'complete' && s.runPractice === false && s.wins && s.wins.greenland >= 1],
+  ], timeout: 40000 },
+  pracmode: { url: '?level=greenland&autoplay=1&noaudio=1&mute=1&start=146&debug=1&practice=1', shots: [
+    ['prac_complete', (s) => s.state === 'complete' && s.runPractice === true && s.pwins && s.pwins.greenland >= 1],
+  ], timeout: 40000 },
   menu: { url: '?debug=1', shots: [
     ['menu_1', (s) => s.state === 'menu'],
     ['menu_2', (s) => s.state === 'menu', { key: 'ArrowRight' }],

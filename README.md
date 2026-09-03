@@ -37,6 +37,10 @@ python -m http.server 8765
 Then visit <http://localhost:8765/>. The repository is a static site, so it also deploys
 as-is on Vercel or GitHub Pages.
 
+Scripts are loaded with a version query string from `index.html`. On localhost every load gets a
+fresh stamp; in production bump `TD_VERSION` in `index.html` whenever a JS or CSS file changes so
+returning players never run a mix of old and new modules.
+
 | Key | Action |
 | --- | --- |
 | ← → / 1 / 2 / 3 / click a card | Choose a level on the menu |

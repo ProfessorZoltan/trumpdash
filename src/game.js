@@ -5,7 +5,12 @@
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
   const audio = new window.TD_AUDIO.Engine();
-  const LS = { practice: 'trumpdash.practice', muted: 'trumpdash.muted', best: (id) => `trumpdash.best.${id}`, wins: (id) => `trumpdash.wins.${id}` };
+  // Regular-mode and practice-mode records are stored separately per level.
+  const LS = {
+    practice: 'trumpdash.practice', muted: 'trumpdash.muted',
+    best: (id) => `trumpdash.best.${id}`, wins: (id) => `trumpdash.wins.${id}`,
+    pbest: (id) => `trumpdash.pbest.${id}`, pwins: (id) => `trumpdash.pwins.${id}`,
+  };
   const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } };
   const lsSet = (k, v) => { try { localStorage.setItem(k, String(v)); } catch (e) { /* ignore */ } };
 
@@ -19,11 +24,22 @@
     held: false, beat: 0, beatPulse: 0, time: 0, camX: -C.PLAYER_X, camLock: null,
     particles: [], floaters: [], shake: 0,
     stats: null, deathMsg: null, deadAt: 0, checkpoint: 0, checkpoints: [], lastCpCheck: -1,
-    ending: null, best: {}, wins: {}, lastError: null,
+    ending: null, best: {}, wins: {}, pbest: {}, pwins: {}, runPractice: false, lastError: null,
   };
   for (const def of LEVELS) {
     G.best[def.id] = parseFloat(lsGet(LS.best(def.id), def.id === 'venezuela' ? lsGet('trumpdash.best', '0') : '0')) || 0;
     G.wins[def.id] = parseInt(lsGet(LS.wins(def.id), def.id === 'venezuela' ? lsGet('trumpdash.wins', '0') : '0'), 10) || 0;
+    G.pbest[def.id] = parseFloat(lsGet(LS.pbest(def.id), '0')) || 0;
+    G.pwins[def.id] = parseInt(lsGet(LS.pwins(def.id), '0'), 10) || 0;
+  }
+  // Record a progress percentage / a clear in the bucket for the current run's mode
+  function recordBest(id, pct) {
+    if (G.runPractice) { if (pct > (G.pbest[id] || 0)) { G.pbest[id] = pct; lsSet(LS.pbest(id), pct.toFixed(1)); } }
+    else if (pct > (G.best[id] || 0)) { G.best[id] = pct; lsSet(LS.best(id), pct.toFixed(1)); }
+  }
+  function recordWin(id) {
+    if (G.runPractice) { G.pwins[id] = (G.pwins[id] || 0) + 1; lsSet(LS.pwins(id), G.pwins[id]); }
+    else { G.wins[id] = (G.wins[id] || 0) + 1; lsSet(LS.wins(id), G.wins[id]); }
   }
   audio.muted = G.muted;
   // Debug/automation URL params: ?level=<id>&autoplay=1&start=<beat>&noaudio=1&mute=1&practice=1&debug=1
@@ -46,6 +62,7 @@
     audio.setLevel(G.level);
     G.attempt = 0;
     G.checkpoint = 0; G.checkpoints = []; G.lastCpCheck = -1;
+    G.runPractice = G.practice;
     resetStats();
     startAttempt(0);
   }
@@ -85,8 +102,7 @@
       const a = Math.random() * Math.PI * 2, sp = 120 + Math.random() * 380;
       G.particles.push({ x: st.x, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 150 * st.grav, life: 0.7 + Math.random() * 0.5, maxLife: 1.1, size: 3 + Math.random() * 4, color: pick(colors), gravity: 900 * st.grav });
     }
-    const pct = Math.min(100, (st.x / G.level.lengthPx) * 100);
-    if (pct > (G.best[def.id] || 0)) { G.best[def.id] = pct; lsSet(LS.best(def.id), pct.toFixed(1)); }
+    recordBest(def.id, Math.min(100, (st.x / G.level.lengthPx) * 100));
   }
   function onFinish() {
     const st = G.st, def = G.level.def, type = def.ending.type;
@@ -102,13 +118,11 @@
       stamp1: 0, stamp2: 0, subSign: 0, arm: 0, slide: 0, trumpIn: 0.0001, banner: null, bannerT: 0, bannerT0: 0, exhaustT: 0,
       tankers: [], tolls: 0, nextTankerAt: 0,
     };
-    G.best[def.id] = 100; lsSet(LS.best(def.id), '100');
+    recordBest(def.id, 100);
   }
   function completeLevel() {
-    const def = G.level.def;
     G.state = 'complete';
-    G.wins[def.id] = (G.wins[def.id] || 0) + 1;
-    lsSet(LS.wins(def.id), G.wins[def.id]);
+    recordWin(G.level.def.id);
   }
   function togglePause() {
     if (G.state === 'playing') { G.state = 'paused'; G.pausedBeat = G.st.t / C.BEAT_SEC; audio.stopSong(true); }
@@ -390,10 +404,15 @@
       case 'ArrowRight': if (G.state === 'menu') selectLevel(G.levelIdx + 1); break;
       case 'Digit1': case 'Digit2': case 'Digit3': case 'Digit4': if (G.state === 'menu') { const i = parseInt(e.code.slice(5), 10) - 1; if (i < LEVELS.length) selectLevel(i); } break;
       case 'Escape': if (G.state === 'playing' || G.state === 'paused') togglePause(); break;
-      case 'KeyR': if (G.state === 'playing' || G.state === 'paused' || G.state === 'dead') { audio.stopSong(true); G.checkpoint = 0; G.checkpoints = []; G.lastCpCheck = -1; G.stats.combo = 0; startAttempt(0); } break;
+      case 'KeyR': if (G.state === 'playing' || G.state === 'paused' || G.state === 'dead') { audio.stopSong(true); G.checkpoint = 0; G.checkpoints = []; G.lastCpCheck = -1; G.stats.combo = 0; G.runPractice = G.practice; startAttempt(0); } break;
       case 'KeyQ': if (G.state === 'paused' || G.state === 'complete') quitToMenu(); break;
       case 'KeyM': G.muted = !G.muted; audio.setMuted(G.muted); lsSet(LS.muted, G.muted ? '1' : '0'); break;
-      case 'KeyP': if (G.state === 'menu' || G.state === 'paused') { G.practice = !G.practice; lsSet(LS.practice, G.practice ? '1' : '0'); } break;
+      case 'KeyP':
+        if (G.state === 'menu' || G.state === 'paused') {
+          G.practice = !G.practice; lsSet(LS.practice, G.practice ? '1' : '0');
+          if (G.state === 'paused' && G.practice) G.runPractice = true; // once practice is used, the run counts as practice
+        }
+        break;
       case 'KeyH': G.showHitboxes = !G.showHitboxes; break;
       case 'KeyA': G.autoplay = !G.autoplay; break;
     }
@@ -416,7 +435,7 @@
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     frameCount++;
-    if (dbgEl) dbgEl.textContent = JSON.stringify({ frames: frameCount, now, time: G.time, state: G.state, level: G.level && G.level.def.id, beat: G.beat, attempt: G.attempt, checkpoints: G.checkpoints.length, practice: G.practice, autoplay: !!G.autoplay, x: G.st && G.st.x, grav: G.st && G.st.grav, song: audio.songTime(), ending: G.ending && { phase: G.ending.phase, trumpIn: G.ending.trumpIn, stamp1: G.ending.stamp1, stamp2: G.ending.stamp2, arm: G.ending.arm, slide: G.ending.slide, tolls: G.ending.tolls, tankers: G.ending.tankers.length, truckX: G.ending.truckX, truckX0: G.ending.truckX0 }, audio: audio.ctx ? audio.ctx.state + ':' + audio.ctx.currentTime.toFixed(2) + ':step' + audio.nextStep : 'none', stats: G.stats, err: G.lastError || null });
+    if (dbgEl) dbgEl.textContent = JSON.stringify({ frames: frameCount, now, time: G.time, state: G.state, level: G.level && G.level.def.id, beat: G.beat, attempt: G.attempt, checkpoints: G.checkpoints.length, practice: G.practice, runPractice: G.runPractice, best: G.best, pbest: G.pbest, wins: G.wins, pwins: G.pwins, autoplay: !!G.autoplay, x: G.st && G.st.x, grav: G.st && G.st.grav, song: audio.songTime(), ending: G.ending && { phase: G.ending.phase, trumpIn: G.ending.trumpIn, stamp1: G.ending.stamp1, stamp2: G.ending.stamp2, arm: G.ending.arm, slide: G.ending.slide, tolls: G.ending.tolls, tankers: G.ending.tankers.length, truckX: G.ending.truckX, truckX0: G.ending.truckX0 }, audio: audio.ctx ? audio.ctx.state + ':' + audio.ctx.currentTime.toFixed(2) + ':step' + audio.nextStep : 'none', stats: G.stats, err: G.lastError || null });
     try { update(dt, now / 1000); R.draw(ctx, G); }
     catch (err) { G.lastError = String(err && err.stack || err); console.error(err); }
     if (G.lastError) { ctx.fillStyle = '#ff5555'; ctx.font = '12px monospace'; ctx.textAlign = 'left'; G.lastError.split(String.fromCharCode(10)).slice(0, 4).forEach((l, i) => ctx.fillText(l, 10, 100 + i * 14)); }
