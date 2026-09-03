@@ -12,6 +12,7 @@ const OUT = process.argv[3] || path.join(__dirname, '..', 'shots');
 const BASE = 'http://localhost:8765/';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+const PERF = {};
 const PLANS = {
   ending: { url: '?level=venezuela&autoplay=1&noaudio=1&mute=1&start=155&debug=1', shots: [
     ['end_enter', (s) => s.ending && s.ending.phase === 'enter' && s.ending.trumpIn > 0.45],
@@ -118,6 +119,16 @@ const PLANS = {
     ['mr_back', (s) => s.state === 'paused', { rotate: 'landscape' }],
     ['mr_landscape', (s) => s.state === 'paused', { check: "({rotate: getComputedStyle(document.getElementById('rotate')).display, canvas: document.getElementById('game').getBoundingClientRect().toJSON()})" }],
   ], timeout: 30000 },
+  // ---- sync calibration: open it from the menu, fire 14 taps 80 ms late via synthetic key events ----
+  calib: { url: '?noaudio=1&mute=1&debug=1&practice=0', shots: [
+    ['cal_menu', (s) => s.state === 'menu', { tap: [85, 207] }],
+    ['cal_open', (s) => s.state === 'calibrate', { check: "(function(){const a=TD_AUDIO_ENGINE,B=TD_CONST.BEAT_SEC,now=a.clock();let n=0;for(let i=2;i<14;i++){const dt=(a.songStart+i*B+0.08-now)*1000;if(dt<0)continue;n++;setTimeout(()=>{window.dispatchEvent(new KeyboardEvent('keydown',{code:'Space',key:' '}));window.dispatchEvent(new KeyboardEvent('keyup',{code:'Space',key:' '}));},dt);}return 'scheduled '+n;})()" }],
+    ['cal_taps', (s) => s.calib && s.calib.n >= 6],
+    ['cal_done', (s) => s.calib && s.calib.phase === 'done', { check: "({offsetMs: TD_GAME.offsetMs, measured: TD_GAME.calib.measured, taps: TD_GAME.calib.taps.map((e)=>Math.round(e*1000))})" }],
+    ['cal_closed', (s) => s.calib && s.calib.phase === 'done', { tap: [260, 443] }],
+    ['cal_start', (s) => s.state === 'menu' && s.offsetMs > 55 && s.offsetMs < 140, { tap: [295, 188] }],
+    ['cal_playing', (s) => s.state === 'playing', { check: "({offset: TD_AUDIO_ENGINE.offset, user: TD_AUDIO_ENGINE.userOffset, auto: TD_AUDIO_ENGINE.autoLatency()})" }],
+  ], timeout: 45000 },
   // ---- the same buttons with a mouse ----
   desk_pause: { url: '?level=venezuela&noaudio=1&mute=1&start=0&debug=1&practice=0', shots: [
     ['dp_playing', (s) => s.state === 'playing' && s.beat > 1.5, { tap: [923, 28] }],
@@ -135,6 +146,19 @@ const PLANS = {
     ['ct_complete', (s) => s.state === 'complete', { tap: [480, 443] }],
     ['ct_menu', (s) => s.state === 'menu'],
   ], timeout: 40000 },
+  // render cost: PERF_LEVEL=<id> [THROTTLE=4] node tools/shoot.js perf ; every 2 s logs the smoothed
+  // JS time inside draw() and the achieved frame rate (THROTTLE slows the CPU like a weak phone)
+  perf: { url: `?level=${process.env.PERF_LEVEL || 'venezuela'}&autoplay=1&noaudio=1&mute=1&start=20&debug=1${process.env.PERF_SCALE ? '&scale=' + process.env.PERF_SCALE : ''}`, shots: [
+    ['perf', (s) => {
+      const now = Date.now();
+      if (!PERF.t) { PERF.t = now; PERF.f = s.frames; }
+      else if (now - PERF.t >= 2000) {
+        console.log('PERF', s.level, 'beat', +(s.beat || 0).toFixed(1), 'drawMs', s.drawMs, 'fps', ((s.frames - PERF.f) * 1000 / (now - PERF.t)).toFixed(1), 'scale', s.scale);
+        PERF.t = now; PERF.f = s.frames;
+      }
+      return s.beat >= 60 || (s.state !== 'playing' && s.attempt > 1);
+    }],
+  ], timeout: 60000 },
   probe: { url: process.env.PROBE_URL || '?debug=1', shots: [
     ['probe', (s) => { if (s.frames % 40 < 3) console.log('PROBE', JSON.stringify({ frames: s.frames, state: s.state, level: s.level, beat: +(s.beat || 0).toFixed(2), attempt: s.attempt, gk: s.gk, song: +(s.song || 0).toFixed(2), err: s.err })); return s.frames > 420; }],
   ], timeout: 15000 },
@@ -192,6 +216,7 @@ class CDP {
   await cdp.send('Runtime.enable');
   const MOBILE = process.env.MOBILE || '';
   const metrics = (mode) => { const p = mode === 'portrait'; return { width: p ? 390 : 844, height: p ? 844 : 390, deviceScaleFactor: 2, mobile: true, screenWidth: p ? 390 : 844, screenHeight: p ? 844 : 390, screenOrientation: { type: p ? 'portraitPrimary' : 'landscapePrimary', angle: p ? 0 : 90 } }; };
+  if (process.env.THROTTLE) await cdp.send('Emulation.setCPUThrottlingRate', { rate: parseFloat(process.env.THROTTLE) });
   if (MOBILE) {
     await cdp.send('Emulation.setDeviceMetricsOverride', metrics(MOBILE));
     await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });

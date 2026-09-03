@@ -7,7 +7,7 @@
   const audio = new window.TD_AUDIO.Engine();
   // Regular-mode and practice-mode records are stored separately per level.
   const LS = {
-    practice: 'trumpdash.practice', muted: 'trumpdash.muted',
+    practice: 'trumpdash.practice', muted: 'trumpdash.muted', offset: 'trumpdash.offset',
     best: (id) => `trumpdash.best.${id}`, wins: (id) => `trumpdash.wins.${id}`,
     pbest: (id) => `trumpdash.pbest.${id}`, pwins: (id) => `trumpdash.pwins.${id}`,
   };
@@ -23,6 +23,7 @@
     // touch: coarse-pointer devices get tap wording and touch-sized hit slop from the first frame
     showHitboxes: false, touch: !!(window.matchMedia && matchMedia('(pointer: coarse)').matches), touches: new Set(),
     fsAvailable: false, fullscreen: false,
+    offsetMs: parseInt(lsGet(LS.offset, '0'), 10) || 0, calib: null, // sync offset (ms, calibrated residual)
     held: false, beat: 0, beatPulse: 0, time: 0, camX: -C.PLAYER_X, camLock: null,
     particles: [], floaters: [], shake: 0,
     stats: null, deathMsg: null, deadAt: 0, checkpoint: 0, checkpoints: [], lastCpCheck: -1,
@@ -44,6 +45,7 @@
     else { G.wins[id] = (G.wins[id] || 0) + 1; lsSet(LS.wins(id), G.wins[id]); }
   }
   audio.muted = G.muted;
+  audio.setUserOffset(G.offsetMs / 1000);
   // Debug/automation URL params: ?level=<id>&autoplay=1&start=<beat>&noaudio=1&mute=1&practice=1&debug=1
   const Q = new URLSearchParams(location.search);
   G.autoplay = Q.get('autoplay') === '1';
@@ -146,9 +148,51 @@
     if (G.state === 'paused' && G.practice) G.runPractice = true; // once practice is used, the run counts as practice
   }
   function toggleMute() { G.muted = !G.muted; audio.setMuted(G.muted); lsSet(LS.muted, G.muted ? '1' : '0'); }
+  // ---------- sync calibration ----------
+  // The player taps along to a click. The median lateness of the taps (audio-out + touch-in latency,
+  // minus what the platform already reports) becomes the sync offset; audio.js then schedules every
+  // song that much earlier, so taps that feel on the beat land on the physics beat.
+  const CALIB_TAPS = 12, CALIB_BPM = 120;
+  function startCalibration() {
+    if (!G.noAudio) audio.init();
+    audio.resume();
+    C.setTempo(CALIB_BPM);
+    audio.startClick(0.8);
+    G.calib = { phase: 'tap', taps: [], need: CALIB_TAPS, last: null, lastAt: 0, song: 0, measured: 0, auto: 0 };
+    G.state = 'calibrate';
+  }
+  function calibTap() {
+    const c = G.calib;
+    if (!c || c.phase !== 'tap') return;
+    const s = audio.songTime();
+    if (s < 0.3) return; // count-in
+    const n = Math.round(s / C.BEAT_SEC), err = s - n * C.BEAT_SEC;
+    if (Math.abs(err) > 0.2) return; // nowhere near a beat: ignore
+    c.taps.push(err); c.last = err; c.lastAt = G.time;
+    audio.sfxBeep();
+    if (c.taps.length < c.need) return;
+    const errs = c.taps.slice(2).sort((a, b) => a - b); // drop the two settling-in taps, take the median
+    c.measured = errs[Math.floor(errs.length / 2)];
+    c.auto = audio.autoLatency();
+    G.offsetMs = Math.round(Math.max(-0.25, Math.min(0.35, c.measured - c.auto)) * 1000);
+    lsSet(LS.offset, G.offsetMs);
+    audio.setUserOffset(G.offsetMs / 1000);
+    audio.stopClick();
+    audio.sfxCheckpoint();
+    c.phase = 'done';
+  }
+  function endCalibration(reset) {
+    audio.stopClick();
+    if (reset) { G.offsetMs = 0; lsSet(LS.offset, 0); audio.setUserOffset(0); }
+    G.calib = null; G.state = 'menu';
+  }
   // On-screen buttons (drawn by render.js, hit-tested in press)
   function uiAction(id) {
     switch (id) {
+      case 'sync': if (G.state === 'menu') startCalibration(); break;
+      case 'calib_cancel': case 'calib_done': if (G.state === 'calibrate') endCalibration(false); break;
+      case 'calib_again': if (G.state === 'calibrate') startCalibration(); break;
+      case 'calib_reset': if (G.state === 'calibrate') endCalibration(true); break;
       case 'pause': if (G.state === 'playing') togglePause(); break;
       case 'resume': if (G.state === 'paused') resume(); break;
       case 'restart': restartRun(); break;
@@ -480,6 +524,8 @@
       if (G.time - G.deadAt > 1.0) startAttempt(G.practice ? G.checkpoint : 0);
     } else if (G.state === 'ending') {
       updateEnding(dt);
+    } else if (G.state === 'calibrate' && G.calib) {
+      G.calib.song = audio.songTime();
     }
     if (G.st && G.state !== 'menu') {
       let cam = G.st.x - C.PLAYER_X;
@@ -487,7 +533,7 @@
       if (G.camLock != null) cam = G.camLock;
       G.camX = cam;
     }
-    const b = G.state === 'menu' ? (G.time * C.BPM) / 60 : G.beat;
+    const b = G.state === 'menu' ? (G.time * C.BPM) / 60 : G.state === 'calibrate' && G.calib ? Math.max(0, G.calib.song) / C.BEAT_SEC : G.beat;
     G.beatPulse = Math.pow(1 - (b % 1), 3);
     for (let i = G.particles.length - 1; i >= 0; i--) {
       const p = G.particles[i];
@@ -527,6 +573,7 @@
       case 'paused': resume(); break;
       case 'playing': G.held = true; break;
       case 'dead': G.held = true; break;
+      case 'calibrate': calibTap(); break;
     }
   }
   function release() { G.held = false; }
@@ -541,9 +588,10 @@
       case 'ArrowLeft': if (G.state === 'menu') selectLevel(G.levelIdx - 1); break;
       case 'ArrowRight': if (G.state === 'menu') selectLevel(G.levelIdx + 1); break;
       case 'Digit1': case 'Digit2': case 'Digit3': case 'Digit4': case 'Digit5': case 'Digit6': case 'Digit7': case 'Digit8': case 'Digit9': if (G.state === 'menu') { const i = parseInt(e.code.slice(5), 10) - 1; if (i < LEVELS.length) selectLevel(i); } break;
-      case 'Escape': if (G.state === 'playing' || G.state === 'paused') togglePause(); break;
+      case 'Escape': if (G.state === 'playing' || G.state === 'paused') togglePause(); else if (G.state === 'calibrate') endCalibration(false); break;
+      case 'KeyC': if (G.state === 'menu') startCalibration(); break;
       case 'KeyR': restartRun(); break;
-      case 'KeyQ': if (G.state === 'paused' || G.state === 'complete') quitToMenu(); break;
+      case 'KeyQ': if (G.state === 'paused' || G.state === 'complete') quitToMenu(); else if (G.state === 'calibrate') endCalibration(false); break;
       case 'KeyM': toggleMute(); break;
       case 'KeyP': togglePractice(); break;
       case 'KeyF': toggleFullscreen(); break;
@@ -569,22 +617,36 @@
   window.addEventListener('touchend', touchUp, { passive: false });
   window.addEventListener('touchcancel', touchUp, { passive: false });
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { if (G.state === 'playing') togglePause(); }
+    if (document.hidden) { if (G.state === 'playing') togglePause(); else if (G.state === 'calibrate') endCalibration(false); }
     else audio.resume(); // iOS leaves the context interrupted after a call, Siri or an app switch
   });
-  window.addEventListener('blur', () => { G.touches.clear(); release(); if (G.state === 'playing') togglePause(); });
+  window.addEventListener('blur', () => { G.touches.clear(); release(); if (G.state === 'playing') togglePause(); else if (G.state === 'calibrate') endCalibration(false); });
 
   // ---------- screen fit, fullscreen, orientation ----------
   // The canvas keeps its 960x540 bitmap; its CSS box is the largest 16:9 rectangle inside #wrap, which
   // is inset by the phone's safe areas (style.css). Re-fit on every viewport change: rotation, the
   // mobile URL bar collapsing, entering fullscreen.
   const wrap = document.getElementById('wrap');
+  let lastDpr = 0;
   function fitCanvas() {
     const cw = wrap.clientWidth, ch = wrap.clientHeight;
     if (!cw || !ch) return;
     const s = Math.min(cw / C.W, ch / C.H);
     canvas.style.width = Math.round(C.W * s) + 'px';
     canvas.style.height = Math.round(C.H * s) + 'px';
+    // backing store = CSS size x devicePixelRatio (capped in the renderer) so text and sprites are crisp
+    lastDpr = window.devicePixelRatio || 1;
+    R.setScale(canvas, Q.has('scale') ? parseFloat(Q.get('scale')) : Math.min(scaleCap, s * lastDpr));
+  }
+  // Dynamic resolution: a device that cannot hold a smooth frame rate at full density gets the backing
+  // store stepped down, never below 1 (today's 960x540). Only ever steps down, so it cannot oscillate.
+  let scaleCap = 2, frameAcc = 0, frameN = 0;
+  function watchFrameRate(rawDt) {
+    if (G.state !== 'playing' || Q.has('scale')) { frameAcc = 0; frameN = 0; return; }
+    frameAcc += rawDt; frameN++;
+    if (frameN < 120) return;
+    const avg = frameAcc / frameN; frameAcc = 0; frameN = 0;
+    if (avg > 1 / 45 && scaleCap > 1) { scaleCap = Math.max(1, scaleCap - 0.25); fitCanvas(); }
   }
   fitCanvas();
   window.addEventListener('resize', fitCanvas);
@@ -628,12 +690,17 @@
   if (dbgEl) dbgEl.id = 'dbg';
   let frameCount = 0;
   function frame(now) {
-    const dt = Math.min(0.05, (now - last) / 1000);
+    const rawDt = (now - last) / 1000, dt = Math.min(0.05, rawDt);
     last = now;
     frameCount++;
-    if (dbgEl) dbgEl.textContent = JSON.stringify({ frames: frameCount, now, time: G.time, state: G.state, level: G.level && G.level.def.id, beat: G.beat, attempt: G.attempt, checkpoints: G.checkpoints.length, practice: G.practice, runPractice: G.runPractice, best: G.best, pbest: G.pbest, wins: G.wins, pwins: G.pwins, autoplay: !!G.autoplay, touch: G.touch, levelIdx: G.levelIdx, fs: G.fsAvailable, fullscreen: G.fullscreen, x: G.st && G.st.x, grav: G.st && G.st.grav, speedMul: G.st && G.st.speedMul, gk: G.st && G.st.gk, song: audio.songTime(), ending: G.ending && { phase: G.ending.phase, trumpIn: G.ending.trumpIn, stamp1: G.ending.stamp1, stamp2: G.ending.stamp2, subSign: G.ending.subSign, arm: G.ending.arm, slide: G.ending.slide, flagY: G.ending.flagY, flag2Y: G.ending.flag2Y, gate: G.ending.gate, ship: G.ending.ship, typed: G.ending.typed, plaqueY: G.ending.plaqueY, ufoX: G.ending.ufoX, tolls: G.ending.tolls, tankers: G.ending.tankers.length, truckX: G.ending.truckX, truckX0: G.ending.truckX0 }, audio: audio.ctx ? audio.ctx.state + ':' + audio.ctx.currentTime.toFixed(2) + ':step' + audio.nextStep : 'none', stats: G.stats, err: G.lastError || null });
-    try { update(dt, now / 1000); R.draw(ctx, G); }
-    catch (err) { G.lastError = String(err && err.stack || err); console.error(err); }
+    watchFrameRate(rawDt);
+    if ((frameCount & 63) === 0 && (window.devicePixelRatio || 1) !== lastDpr) fitCanvas(); // moved to another monitor / zoomed
+    if (dbgEl) dbgEl.textContent = JSON.stringify({ frames: frameCount, now, time: G.time, state: G.state, level: G.level && G.level.def.id, beat: G.beat, attempt: G.attempt, checkpoints: G.checkpoints.length, practice: G.practice, runPractice: G.runPractice, best: G.best, pbest: G.pbest, wins: G.wins, pwins: G.pwins, autoplay: !!G.autoplay, drawMs: +(G.drawMs || 0).toFixed(2), scale: +(canvas.width / C.W).toFixed(2), offsetMs: G.offsetMs, audioOffset: +(audio.offset || 0).toFixed(3), calib: G.calib && { phase: G.calib.phase, n: G.calib.taps.length, measured: +G.calib.measured.toFixed(3) }, touch: G.touch, levelIdx: G.levelIdx, fs: G.fsAvailable, fullscreen: G.fullscreen, x: G.st && G.st.x, grav: G.st && G.st.grav, speedMul: G.st && G.st.speedMul, gk: G.st && G.st.gk, song: audio.songTime(), ending: G.ending && { phase: G.ending.phase, trumpIn: G.ending.trumpIn, stamp1: G.ending.stamp1, stamp2: G.ending.stamp2, subSign: G.ending.subSign, arm: G.ending.arm, slide: G.ending.slide, flagY: G.ending.flagY, flag2Y: G.ending.flag2Y, gate: G.ending.gate, ship: G.ending.ship, typed: G.ending.typed, plaqueY: G.ending.plaqueY, ufoX: G.ending.ufoX, tolls: G.ending.tolls, tankers: G.ending.tankers.length, truckX: G.ending.truckX, truckX0: G.ending.truckX0 }, audio: audio.ctx ? audio.ctx.state + ':' + audio.ctx.currentTime.toFixed(2) + ':step' + audio.nextStep : 'none', stats: G.stats, err: G.lastError || null });
+    try {
+      update(dt, now / 1000);
+      const d0 = performance.now(); R.draw(ctx, G);
+      G.drawMs = (G.drawMs || 0) * 0.9 + (performance.now() - d0) * 0.1; // smoothed render cost per frame
+    } catch (err) { G.lastError = String(err && err.stack || err); console.error(err); }
     if (G.lastError) { ctx.fillStyle = '#ff5555'; ctx.font = '12px monospace'; ctx.textAlign = 'left'; G.lastError.split(String.fromCharCode(10)).slice(0, 4).forEach((l, i) => ctx.fillText(l, 10, 100 + i * 14)); }
     requestAnimationFrame(frame);
   }
@@ -649,4 +716,5 @@
   img.src = SPR.SHEET;
   requestAnimationFrame(frame);
   window.TD_GAME = G;
+  if (Q.has('debug')) window.TD_AUDIO_ENGINE = audio;
 })();

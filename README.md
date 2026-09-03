@@ -74,6 +74,7 @@ returning players never run a mix of old and new modules.
 | R | Restart from the beginning |
 | P, or the PRACTICE toggle | Toggle practice mode (auto checkpoints every few bars, all flags stay visible) |
 | M, or the SOUND toggle | Mute |
+| C, or the SYNC chip | Tap-to-the-beat calibration: measures how late your taps arrive and starts the music that much earlier |
 | F, or the ⛶ button on the menu | Fullscreen (on Android this also locks landscape) |
 | H | Show hitboxes |
 | A | Toggle autoplay (watch mode) |
@@ -89,6 +90,21 @@ phone rotates. Portrait phones get a "rotate your phone" screen, and a run in pr
 the phone is turned. `manifest.json` plus the Apple meta tags in `index.html` make "Add to Home
 Screen" launch the game landscape and chrome-free; the icons in `icons/` are rendered from the
 sprite sheet by `node tools/make_icons.js`.
+
+Bluetooth headphones and touch screens both add latency, so SYNC on the menu runs a short
+calibration: tap along to a click twelve times and the median lateness (minus whatever latency the
+browser reports for the audio device) is stored as the sync offset. Every song is then scheduled
+that much earlier, so a tap that feels on the beat lands on the physics beat. Recalibrate after
+switching headphones.
+
+### Rendering
+
+The canvas keeps its 960x540 coordinate system but its backing store is sized to the CSS size
+times the device pixel ratio (capped at 2x), so text and sprites are crisp on phones and large
+monitors. The parallax backdrops are baked into tiles the first time they are drawn at a given
+scale and blitted afterwards; gradients are cached; only animated details (twinkle, comet, flames,
+aurora, glints) are drawn live. If a device still cannot hold roughly 45 fps the backing store is
+stepped down to 1x, never lower. `?scale=<n>` pins the scale for testing.
 
 ## How the rhythm works
 
@@ -125,9 +141,11 @@ the frame rate stutters.
   (server must be running on port 8765) and captures screenshots. Plans: `menu`, `tour`,
   `ending`, `practice`, `audio` (Venezuela), `tour2`, `ending2` (Hormuz) and `tour3`, `ending3`
   (Greenland), `tour4`, `ending4` (Canada), `tour5`, `ending5` (Panama), `tour6`, `ending6` (Moon),
-  plus `desk_pause` and `complete_tap` (clicking the on-screen buttons) and, with `MOBILE=landscape`,
-  `mobile_menu` and `mobile_rotate`, which emulate a phone with touch and walk the touch UI. Set
-  `PORT=` to run several at once.
+  plus `desk_pause`, `complete_tap` and `calib` (clicking the on-screen buttons and driving the sync
+  calibration with synthetic taps) and, with `MOBILE=landscape`, `mobile_menu` and `mobile_rotate`,
+  which emulate a phone with touch and walk the touch UI. `PERF_LEVEL=<id> THROTTLE=4 node
+  tools/shoot.js perf` logs the JS time spent in draw() and the achieved frame rate under a 4x CPU
+  throttle (`PERF_SCALE=1` pins the resolution). Set `PORT=` to run several at once.
 * `node tools/make_icons.js` regenerates `icons/` (home-screen icons and the social preview) from the
   running game.
 

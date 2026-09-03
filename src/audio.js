@@ -20,7 +20,17 @@
       this.endStep = Infinity;
       this.level = null;
       this.engineNodes = null;
+      // Sync: the music is scheduled `offset` seconds early so a tap that arrives late (audio output
+      // latency + touch latency) still lands on the physics beat. offset = the calibrated residual
+      // (userOffset) + whatever latency the platform reports (autoLatency), recomputed per song.
+      this.userOffset = 0;
+      this.offset = 0;
+      this.click = false; // metronome mode for the calibration screen
     }
+    autoLatency() { const c = this.ctx; return c ? (c.baseLatency || 0) + (c.outputLatency || 0) : 0; }
+    setUserOffset(sec) { this.userOffset = sec || 0; }
+    startClick(lead) { this.click = true; this.startSong(0, lead); this.endStep = Infinity; }
+    stopClick() { this.stopSong(true); this.click = false; }
 
     init() {
       if (this.ctx) return true;
@@ -314,6 +324,11 @@
       this.endStep = Math.ceil(level.endBeat * 4) + 8;
     }
     scheduleStep(step, t) {
+      if (this.click) { // calibration metronome: kick + clap on the beat, a hat on the off-beat
+        const sib = step % 16, sub = sib & 3, bib = sib >> 2;
+        if (sub === 0) { this.kick(t, 1); this.clap(t, bib === 0 ? 0.9 : 0.5); } else if (sub === 2) this.hat(t, false, 0.22);
+        return;
+      }
       const lv = this.level;
       if (!lv) return;
       const bar = Math.floor(step / 16), sib = step % 16, bib = sib >> 2, sub = sib & 3;
@@ -326,6 +341,7 @@
     }
     startSong(fromBeat, lead) {
       this.stopSong(false);
+      this.offset = this.click ? 0 : this.userOffset + this.autoLatency();
       if (!this.ctx) { this.songStart = this.clock() + lead - fromBeat * C.BEAT_SEC; this.playing = true; return; }
       this.resume();
       const now = this.ctx.currentTime;
@@ -342,11 +358,11 @@
     }
     tick() {
       const ctx = this.ctx;
-      const STEP = stepSec();
+      const STEP = stepSec(), base = this.songStart - this.offset; // the music runs `offset` early (see constructor)
       const horizon = ctx.currentTime + 0.14;
       let guard = 0;
-      while (this.songStart + this.nextStep * STEP < horizon && guard++ < 64) {
-        const t = this.songStart + this.nextStep * STEP;
+      while (base + this.nextStep * STEP < horizon && guard++ < 64) {
+        const t = base + this.nextStep * STEP;
         if (t >= ctx.currentTime - 0.01 && this.nextStep <= this.endStep) {
           try { this.scheduleStep(this.nextStep, t); } catch (e) { console.warn('music step failed', e); }
         }

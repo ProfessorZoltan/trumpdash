@@ -8,6 +8,9 @@
 
   let sheet = null;
   const runFrames = [];
+  let SCALE = 1;           // device pixels per logical pixel; the coordinate system stays 960x540 (setScale)
+  const TILES = new Map(); // baked parallax layers / static images, rebuilt when the scale changes
+  const GRADS = new Map(); // gradients keyed by geometry + stops (they only depend on logical coordinates)
   const IMAGES = {}; // extra artwork loaded on demand (maps for the Greenland ending)
   function loadImage(name, src) {
     const im = new Image();
@@ -67,17 +70,82 @@
 
   function init(img) {
     sheet = img;
+    buildRunFrames();
+  }
+  // The run cycle is pre-scaled from the sheet once. Each frame canvas carries its logical size (lw, lh)
+  // while its bitmap is SCALE times larger, so the sprite stays crisp on high-density screens.
+  function buildRunFrames() {
     runFrames.length = 0;
+    if (!sheet) return;
     for (const f of SPR.FRAMES.run) {
       const cv = document.createElement('canvas');
-      cv.width = Math.ceil(f.w * SPR.RUN_SCALE);
-      cv.height = Math.ceil(f.h * SPR.RUN_SCALE);
+      const lw = f.w * SPR.RUN_SCALE, lh = f.h * SPR.RUN_SCALE;
+      cv.width = Math.ceil(lw * SCALE);
+      cv.height = Math.ceil(lh * SCALE);
+      cv.lw = lw; cv.lh = lh;
       const c = cv.getContext('2d');
       c.imageSmoothingEnabled = true;
       c.imageSmoothingQuality = 'high';
-      c.drawImage(img, f.x, f.y, f.w, f.h, 0, 0, cv.width, cv.height);
+      c.drawImage(sheet, f.x, f.y, f.w, f.h, 0, 0, cv.width, cv.height);
       runFrames.push(cv);
     }
+  }
+  // Size the backing store to `scale` device pixels per logical pixel. game.js calls this whenever the
+  // canvas's CSS size or the devicePixelRatio changes; 2 is the cap (1920x1080) to bound fill cost.
+  function setScale(canvas, scale) {
+    scale = Math.max(0.5, Math.min(2, scale || 1));
+    const pw = Math.round(W * scale);
+    if (Math.abs(scale - SCALE) < 0.005 && canvas.width === pw) return;
+    SCALE = scale;
+    canvas.width = pw; canvas.height = Math.round(H * scale);
+    TILES.clear();
+    buildRunFrames();
+  }
+  // Creating a gradient every frame is one of the more expensive canvas operations, so they are cached
+  // by a key that names their geometry and stops. Palette blends produce new keys for a few seconds;
+  // the map is simply cleared when it grows.
+  function grad(ctx, key, x0, y0, x1, y1, stops) {
+    let g = GRADS.get(key);
+    if (!g) {
+      if (GRADS.size > 256) GRADS.clear();
+      g = ctx.createLinearGradient(x0, y0, x1, y1);
+      for (let i = 0; i < stops.length; i += 2) g.addColorStop(stops[i], stops[i + 1]);
+      GRADS.set(key, g);
+    }
+    return g;
+  }
+  // A parallax layer is periodic in world x, so it is painted once into an offscreen canvas one period
+  // wide (three copies, so shapes that cross the seam wrap) and blitted up to three times per frame.
+  // `paint(c, ox)` draws the layer with its origin at logical x = ox. Tiles hold device pixels.
+  function tile(key, per, y0, h, paint) {
+    let t = TILES.get(key);
+    if (t) return t;
+    const cv = document.createElement('canvas');
+    cv.width = Math.max(1, Math.round(per * SCALE));
+    cv.height = Math.max(1, Math.round(h * SCALE));
+    const ty0 = Math.round(y0 * SCALE) / SCALE;
+    const c = cv.getContext('2d');
+    c.setTransform(SCALE, 0, 0, SCALE, 0, -ty0 * SCALE);
+    for (let k = -1; k <= 1; k++) paint(c, k * per);
+    t = { cv, per: cv.width / SCALE, y0: ty0, h: cv.height / SCALE };
+    TILES.set(key, t);
+    return t;
+  }
+  function blitTile(ctx, t, cam, p) {
+    const off = ((-cam * p) % t.per + t.per) % t.per;
+    for (let k = -1; k <= 1; k++) {
+      const x = Math.round((off + k * t.per) * SCALE) / SCALE; // device-pixel aligned: no resampling blur
+      if (x + t.per <= 0 || x >= W) continue;
+      ctx.drawImage(t.cv, x, t.y0, t.per, t.h);
+    }
+  }
+  // a ridge line: fill from `baseY` up to peaks `top + rnd * amp` above the ground, `n` segments per period
+  function ridgeTile(key, per, baseY, top, amp, n, seed, color) {
+    return tile(key, per, GY - top - amp - 6, top + amp + 6, (c, ox) => {
+      c.beginPath(); c.moveTo(ox, baseY);
+      for (let i = 0; i <= n; i++) c.lineTo(ox + (i / n) * per, GY - top - rnd((i % n) * seed[0] + seed[1]) * amp);
+      c.lineTo(ox + per, baseY); c.closePath(); c.fillStyle = color; c.fill();
+    });
   }
   // draw a pose anchored at bottom-centre with a given height
   function drawPose(ctx, name, x, bottomY, height, flip) {
@@ -94,22 +162,24 @@
   }
 
   // ---------------- background ----------------
+  // Backdrops: the static parallax layers are baked into tiles the first time they are drawn at the
+  // current scale; only the animated bits (twinkle, comet, flames, aurora, glints) are drawn live.
+  const STARS = [], SPACE_STARS = [];
+  for (let i = 0; i < 60; i++) STARS.push({ x: rnd(i) * 1400, y: rnd(i + 100) * 260, ph: i });
+  for (let i = 0; i < 110; i++) SPACE_STARS.push({ x: rnd(i + 900) * 1600, y: rnd(i + 950) * 400, s: 1 + rnd(i + 960) * 2, ph: i });
   function drawBackground(ctx, G, pal, backdrop) {
-    const grad = ctx.createLinearGradient(0, 0, 0, GY);
-    grad.addColorStop(0, pal.top);
-    grad.addColorStop(1, pal.bot);
-    ctx.fillStyle = grad;
+    ctx.fillStyle = grad(ctx, 'sky|' + pal.top + '|' + pal.bot, 0, 0, 0, GY, [0, pal.top, 1, pal.bot]);
     ctx.fillRect(0, 0, W, GY);
     ctx.fillStyle = `rgba(255,255,255,${(0.07 * G.beatPulse).toFixed(3)})`;
     ctx.fillRect(0, 0, W, GY);
-    const cam = G.camX;
-    for (let i = 0; i < 60; i++) {
-      const sx = ((rnd(i) * 1400 - cam * 0.05) % 1400 + 1400) % 1400 - 200;
-      const sy = rnd(i + 100) * 260;
-      const tw = 0.5 + 0.5 * Math.sin(G.time * 3 + i);
-      ctx.fillStyle = `rgba(255,255,255,${(0.3 + 0.5 * tw).toFixed(2)})`;
-      ctx.fillRect(sx, sy, 2, 2);
+    const cam = G.camX, t3 = G.time * 3;
+    ctx.fillStyle = '#fff';
+    for (const s of STARS) {
+      const sx = ((s.x - cam * 0.05) % 1400 + 1400) % 1400 - 200;
+      ctx.globalAlpha = 0.55 + 0.25 * Math.sin(t3 + s.ph);
+      ctx.fillRect(sx, s.y, 2, 2);
     }
+    ctx.globalAlpha = 1;
     if (backdrop === 'gulf') drawGulfBackdrop(ctx, G, cam);
     else if (backdrop === 'arctic') drawArcticBackdrop(ctx, G, cam);
     else if (backdrop === 'canada') drawCanadaBackdrop(ctx, G, cam);
@@ -117,159 +187,113 @@
     else if (backdrop === 'space') drawSpaceBackdrop(ctx, G, cam);
     else drawCityBackdrop(ctx, cam);
   }
+  function paintEarth(c, ex, ey, er) {
+    const glow = c.createRadialGradient(ex, ey, er, ex, ey, er * 1.8);
+    glow.addColorStop(0, 'rgba(120,180,255,0.35)'); glow.addColorStop(1, 'rgba(120,180,255,0)');
+    c.fillStyle = glow; c.beginPath(); c.arc(ex, ey, er * 1.8, 0, Math.PI * 2); c.fill();
+    c.save(); c.beginPath(); c.arc(ex, ey, er, 0, Math.PI * 2); c.clip();
+    c.fillStyle = '#2b6cc4'; c.fillRect(ex - er, ey - er, er * 2, er * 2);
+    c.fillStyle = '#2f9e44';
+    c.beginPath(); c.ellipse(ex - 18, ey - 12, 22, 16, 0.4, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.ellipse(ex + 20, ey + 14, 16, 22, -0.3, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.ellipse(ex + 8, ey - 30, 14, 8, 0.2, 0, Math.PI * 2); c.fill();
+    c.fillStyle = 'rgba(255,255,255,0.7)';
+    for (let i = 0; i < 6; i++) { c.beginPath(); c.ellipse(ex - 40 + i * 16, ey - 20 + rnd(i + 70) * 40, 12, 4, 0.3, 0, Math.PI * 2); c.fill(); }
+    const term = c.createLinearGradient(ex - er, 0, ex + er, 0);
+    term.addColorStop(0, 'rgba(0,0,20,0)'); term.addColorStop(0.65, 'rgba(0,0,20,0)'); term.addColorStop(1, 'rgba(0,0,20,0.75)');
+    c.fillStyle = term; c.fillRect(ex - er, ey - er, er * 2, er * 2);
+    c.restore();
+  }
   function drawSpaceBackdrop(ctx, G, cam) {
-    // dense starfield
-    for (let i = 0; i < 110; i++) {
-      const sx = ((rnd(i + 900) * 1600 - cam * 0.03) % 1600 + 1600) % 1600 - 200;
-      const sy = rnd(i + 950) * 400, s = 1 + rnd(i + 960) * 2;
-      ctx.fillStyle = `rgba(255,255,255,${(0.4 + 0.6 * Math.abs(Math.sin(G.time * 2 + i))).toFixed(2)})`;
-      ctx.fillRect(sx, sy, s, s);
+    // dense starfield, twinkling
+    const t2 = G.time * 2;
+    ctx.fillStyle = '#fff';
+    for (const s of SPACE_STARS) {
+      const sx = ((s.x - cam * 0.03) % 1600 + 1600) % 1600 - 200;
+      ctx.globalAlpha = 0.4 + 0.6 * Math.abs(Math.sin(t2 + s.ph));
+      ctx.fillRect(sx, s.y, s.s, s.s);
     }
+    ctx.globalAlpha = 1;
     // a comet
     const cx = W - ((G.time * 140) % (W + 400)) + 200, cy = 60 + ((G.time * 35) % 120);
     ctx.strokeStyle = 'rgba(180,220,255,0.5)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + 60, cy - 18); ctx.stroke();
     ctx.fillStyle = '#e8f4ff'; ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2); ctx.fill();
-    // Earth
-    const ex = W - 160 - ((cam * 0.02) % 60), ey = 120, er = 54;
-    const glow = ctx.createRadialGradient(ex, ey, er, ex, ey, er * 1.8);
-    glow.addColorStop(0, 'rgba(120,180,255,0.35)'); glow.addColorStop(1, 'rgba(120,180,255,0)');
-    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(ex, ey, er * 1.8, 0, Math.PI * 2); ctx.fill();
-    ctx.save(); ctx.beginPath(); ctx.arc(ex, ey, er, 0, Math.PI * 2); ctx.clip();
-    ctx.fillStyle = '#2b6cc4'; ctx.fillRect(ex - er, ey - er, er * 2, er * 2);
-    ctx.fillStyle = '#2f9e44';
-    ctx.beginPath(); ctx.ellipse(ex - 18, ey - 12, 22, 16, 0.4, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(ex + 20, ey + 14, 16, 22, -0.3, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(ex + 8, ey - 30, 14, 8, 0.2, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    for (let i = 0; i < 6; i++) { ctx.beginPath(); ctx.ellipse(ex - 40 + i * 16, ey - 20 + rnd(i + 70) * 40, 12, 4, 0.3, 0, Math.PI * 2); ctx.fill(); }
-    const term = ctx.createLinearGradient(ex - er, 0, ex + er, 0);
-    term.addColorStop(0, 'rgba(0,0,20,0)'); term.addColorStop(0.65, 'rgba(0,0,20,0)'); term.addColorStop(1, 'rgba(0,0,20,0.75)');
-    ctx.fillStyle = term; ctx.fillRect(ex - er, ey - er, er * 2, er * 2);
-    ctx.restore();
+    // Earth, baked once (glow, oceans, continents, clouds, terminator)
+    const er = 54, R2 = er * 1.8, ex = W - 160 - ((cam * 0.02) % 60), ey = 120;
+    const earth = tile('earth', R2 * 2, 0, R2 * 2, (c, ox) => { if (ox === 0) paintEarth(c, R2, R2, er); });
+    ctx.drawImage(earth.cv, ex - R2, ey - R2, earth.per, earth.h);
     // crater ridges
-    for (const [p, per, col, base] of [[0.12, 1500, 'rgba(190,190,205,0.35)', 150], [0.3, 1100, 'rgba(120,120,135,0.55)', 90]]) {
-      const off = ((-cam * p) % per + per) % per;
-      for (let k = -1; k <= 1; k++) {
-        ctx.beginPath(); ctx.moveTo(off + k * per, GY);
-        for (let i = 0; i <= 12; i++) ctx.lineTo(off + k * per + (i / 12) * per, GY - base + 20 - rnd(i * 3 + p * 50) * base * 0.8);
-        ctx.lineTo(off + k * per + per, GY); ctx.closePath(); ctx.fillStyle = col; ctx.fill();
-      }
-    }
+    blitTile(ctx, ridgeTile('moon-ridge-far', 1500, GY, 130, 120, 12, [3, 6], 'rgba(190,190,205,0.35)'), cam, 0.12);
+    blitTile(ctx, ridgeTile('moon-ridge-near', 1100, GY, 70, 72, 12, [3, 15], 'rgba(120,120,135,0.55)'), cam, 0.3);
   }
   function drawTropicsBackdrop(ctx, G, cam) {
     // jungle hills
-    const per = 1700;
-    const off = ((-cam * 0.12) % per + per) % per;
-    for (let k = -1; k <= 1; k++) {
-      ctx.beginPath();
-      ctx.moveTo(off + k * per, GY - 90);
-      for (let i = 0; i <= 14; i++) ctx.lineTo(off + k * per + (i / 14) * per, GY - 140 - rnd(i * 5 + 4) * 110);
-      ctx.lineTo(off + k * per + per, GY - 90);
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(20,80,50,0.55)';
-      ctx.fill();
-    }
-    // the canal: a water band with a container ship silhouette
-    const sea = ctx.createLinearGradient(0, GY - 120, 0, GY);
-    sea.addColorStop(0, 'rgba(40,140,170,0.9)');
-    sea.addColorStop(1, 'rgba(10,60,90,0.95)');
-    ctx.fillStyle = sea; ctx.fillRect(0, GY - 120, W, 120);
+    blitTile(ctx, ridgeTile('tropics-hills', 1700, GY - 90, 140, 110, 14, [5, 4], 'rgba(20,80,50,0.55)'), cam, 0.12);
+    // the canal: a water band with container ships
+    ctx.fillStyle = grad(ctx, 'tropics-sea', 0, GY - 120, 0, GY, [0, 'rgba(40,140,170,0.9)', 1, 'rgba(10,60,90,0.95)']);
+    ctx.fillRect(0, GY - 120, W, 120);
     ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fillRect(0, GY - 120, W, 1);
-    const per2 = 1500;
-    const off2 = ((-cam * 0.3) % per2 + per2) % per2;
-    for (let k = -1; k <= 1; k++) {
+    const ships = tile('tropics-ships', 1500, GY - 140, 140, (c, ox) => {
       for (let i = 0; i < 3; i++) {
-        const x = off2 + k * per2 + rnd(i * 13 + 7) * per2, w = 160 + rnd(i * 3) * 80, y = GY - 100 + rnd(i + 20) * 30;
-        ctx.fillStyle = 'rgba(20,30,50,0.7)'; ctx.fillRect(x, y - 12, w, 14);
-        ctx.fillRect(x + w - 30, y - 34, 22, 24);
-        for (let c = 0; c < 6; c++) { ctx.fillStyle = ['#c8102e', '#2b6cc4', '#f2b134', '#2f9e44'][(c + i) % 4]; ctx.fillRect(x + 10 + c * 22, y - 24, 18, 12); }
+        const x = ox + rnd(i * 13 + 7) * 1500, w = 160 + rnd(i * 3) * 80, y = GY - 100 + rnd(i + 20) * 30;
+        c.fillStyle = 'rgba(20,30,50,0.7)'; c.fillRect(x, y - 12, w, 14);
+        c.fillRect(x + w - 30, y - 34, 22, 24);
+        for (let k = 0; k < 6; k++) { c.fillStyle = ['#c8102e', '#2b6cc4', '#f2b134', '#2f9e44'][(k + i) % 4]; c.fillRect(x + 10 + k * 22, y - 24, 18, 12); }
       }
-    }
+    });
+    blitTile(ctx, ships, cam, 0.3);
     // palms along the bank
-    const per3 = 1100;
-    const off3 = ((-cam * 0.5) % per3 + per3) % per3;
-    for (let k = -1; k <= 1; k++) for (let i = 0; i < 4; i++) palm(ctx, off3 + k * per3 + rnd(i * 17 + 3) * per3, GY - 4, 90 + rnd(i + 9) * 60);
+    const palms = tile('tropics-palms', 1100, GY - 195, 195, (c, ox) => {
+      for (let i = 0; i < 4; i++) palm(c, ox + rnd(i * 17 + 3) * 1100, GY - 4, 90 + rnd(i + 9) * 60);
+    });
+    blitTile(ctx, palms, cam, 0.5);
   }
   function drawCanadaBackdrop(ctx, G, cam) {
     // Rockies
-    const per = 1900;
-    const off = ((-cam * 0.12) % per + per) % per;
-    for (let k = -1; k <= 1; k++) {
-      ctx.beginPath();
-      ctx.moveTo(off + k * per, GY - 100);
-      for (let i = 0; i <= 12; i++) ctx.lineTo(off + k * per + (i / 12) * per, GY - 170 - rnd(i * 9 + 2) * 150);
-      ctx.lineTo(off + k * per + per, GY - 100);
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(225,235,250,0.55)';
-      ctx.fill();
-    }
+    blitTile(ctx, ridgeTile('canada-rockies', 1900, GY - 100, 170, 150, 12, [9, 2], 'rgba(225,235,250,0.55)'), cam, 0.12);
     // mist
-    const mist = ctx.createLinearGradient(0, GY - 150, 0, GY - 40);
-    mist.addColorStop(0, 'rgba(255,255,255,0)'); mist.addColorStop(1, 'rgba(255,255,255,0.35)');
-    ctx.fillStyle = mist; ctx.fillRect(0, GY - 150, W, 110);
+    ctx.fillStyle = grad(ctx, 'canada-mist', 0, GY - 150, 0, GY - 40, [0, 'rgba(255,255,255,0)', 1, 'rgba(255,255,255,0.35)']);
+    ctx.fillRect(0, GY - 150, W, 110);
     // pine forest, two layers
-    for (const [p, per2, col, hmul] of [[0.28, 1300, 'rgba(20,60,45,0.55)', 1], [0.45, 900, 'rgba(10,40,30,0.75)', 0.8]]) {
-      const off2 = ((-cam * p) % per2 + per2) % per2;
-      for (let k = -1; k <= 1; k++) {
+    for (const [p, per, col, hmul] of [[0.28, 1300, 'rgba(20,60,45,0.55)', 1], [0.45, 900, 'rgba(10,40,30,0.75)', 0.8]]) {
+      const pines = tile('canada-pines' + p, per, GY - 200, 200, (c, ox) => {
         for (let i = 0; i < 14; i++) {
-          const x = off2 + k * per2 + (i / 14) * per2 + rnd(i * 3 + p * 100) * 40, h = (60 + rnd(i * 7 + p * 10) * 90) * hmul, w = 22 + h * 0.3;
-          ctx.fillStyle = col;
+          const x = ox + (i / 14) * per + rnd(i * 3 + p * 100) * 40, h = (60 + rnd(i * 7 + p * 10) * 90) * hmul, w = 22 + h * 0.3;
+          c.fillStyle = col;
           for (let t = 0; t < 3; t++) {
             const ty = GY - h + (t * h) / 3.2, tw = w * (0.5 + t * 0.25);
-            ctx.beginPath(); ctx.moveTo(x, ty - h * 0.3); ctx.lineTo(x - tw / 2, ty + h / 3.2); ctx.lineTo(x + tw / 2, ty + h / 3.2); ctx.closePath(); ctx.fill();
+            c.beginPath(); c.moveTo(x, ty - h * 0.3); c.lineTo(x - tw / 2, ty + h / 3.2); c.lineTo(x + tw / 2, ty + h / 3.2); c.closePath(); c.fill();
           }
-          ctx.fillStyle = 'rgba(255,255,255,0.25)';
-          ctx.beginPath(); ctx.moveTo(x, GY - h - h * 0.3); ctx.lineTo(x - w * 0.18, GY - h - h * 0.05); ctx.lineTo(x + w * 0.18, GY - h - h * 0.05); ctx.closePath(); ctx.fill();
+          c.fillStyle = 'rgba(255,255,255,0.25)';
+          c.beginPath(); c.moveTo(x, GY - h - h * 0.3); c.lineTo(x - w * 0.18, GY - h - h * 0.05); c.lineTo(x + w * 0.18, GY - h - h * 0.05); c.closePath(); c.fill();
         }
-      }
+      });
+      blitTile(ctx, pines, cam, p);
     }
   }
   function drawCityBackdrop(ctx, cam) {
-    const per = 1600;
-    const off = ((-cam * 0.15) % per + per) % per;
-    ctx.fillStyle = 'rgba(0,0,0,0.22)';
-    for (let k = -1; k <= 1; k++) {
-      ctx.beginPath();
-      ctx.moveTo(off + k * per, GY);
-      for (let i = 0; i <= 16; i++) ctx.lineTo(off + k * per + (i / 16) * per, GY - 90 - rnd(i * 7 + 3) * 120);
-      ctx.lineTo(off + k * per + per, GY);
-      ctx.closePath();
-      ctx.fill();
-    }
-    const per2 = 1200;
-    const off2 = ((-cam * 0.4) % per2 + per2) % per2;
-    for (let k = -1; k <= 1; k++) {
-      let x = off2 + k * per2, i = 0;
-      while (x < off2 + (k + 1) * per2) {
+    blitTile(ctx, ridgeTile('city-hills', 1600, GY, 90, 120, 16, [7, 3], 'rgba(0,0,0,0.22)'), cam, 0.15);
+    const buildings = tile('city-buildings', 1200, GY - 195, 195, (c, ox) => {
+      let x = ox, i = 0;
+      while (x < ox + 1200) {
         const w = 30 + rnd(i * 3 + 11) * 70, h = 40 + rnd(i * 5 + 17) * 150;
-        ctx.fillStyle = 'rgba(0,0,0,0.38)';
-        ctx.fillRect(x, GY - h, w, h);
-        ctx.fillStyle = 'rgba(255,230,120,0.35)';
-        for (let wy = GY - h + 10; wy < GY - 10; wy += 16) for (let wx = x + 6; wx < x + w - 8; wx += 12) if (rnd(wx * 0.37 + wy * 0.11 + i) > 0.55) ctx.fillRect(wx, wy, 4, 6);
+        c.fillStyle = 'rgba(0,0,0,0.38)';
+        c.fillRect(x, GY - h, w, h);
+        c.fillStyle = 'rgba(255,230,120,0.35)';
+        for (let wy = GY - h + 10; wy < GY - 10; wy += 16) for (let wx = x + 6; wx < x + w - 8; wx += 12) if (rnd(wx * 0.37 + wy * 0.11 + i) > 0.55) c.fillRect(wx, wy, 4, 6);
         x += w + 12 + rnd(i * 9 + 1) * 40;
         i++;
       }
-    }
+    });
+    blitTile(ctx, buildings, cam, 0.4);
   }
   function drawGulfBackdrop(ctx, G, cam) {
-    const per = 1800;
-    const off = ((-cam * 0.12) % per + per) % per;
-    ctx.fillStyle = 'rgba(0,0,0,0.16)';
-    for (let k = -1; k <= 1; k++) {
-      ctx.beginPath();
-      ctx.moveTo(off + k * per, GY - 120);
-      for (let i = 0; i <= 12; i++) ctx.lineTo(off + k * per + (i / 12) * per, GY - 150 - rnd(i * 5 + 9) * 70);
-      ctx.lineTo(off + k * per + per, GY - 120);
-      ctx.closePath();
-      ctx.fill();
-    }
-    const sea = ctx.createLinearGradient(0, GY - 130, 0, GY);
-    sea.addColorStop(0, 'rgba(10,60,80,0.9)');
-    sea.addColorStop(1, 'rgba(4,25,40,0.95)');
-    ctx.fillStyle = sea;
+    blitTile(ctx, ridgeTile('gulf-hills', 1800, GY - 120, 150, 70, 12, [5, 9], 'rgba(0,0,0,0.16)'), cam, 0.12);
+    ctx.fillStyle = grad(ctx, 'gulf-sea', 0, GY - 130, 0, GY, [0, 'rgba(10,60,80,0.9)', 1, 'rgba(4,25,40,0.95)']);
     ctx.fillRect(0, GY - 130, W, 130);
     ctx.fillStyle = 'rgba(255,255,255,0.25)';
     ctx.fillRect(0, GY - 130, W, 1);
+    // glints shimmer with time, so they stay live
     ctx.fillStyle = 'rgba(255,255,255,0.08)';
     for (let i = 0; i < 40; i++) {
       const sx = ((rnd(i + 300) * 1200 - cam * 0.25) % 1200 + 1200) % 1200 - 100;
@@ -277,22 +301,30 @@
       const w = 10 + 30 * rnd(i + 500) * (0.5 + 0.5 * Math.sin(G.time * 2 + i));
       ctx.fillRect(sx, sy, w, 1.5);
     }
+    // platforms and flare stacks (static), then the flames (animated)
     const per2 = 1500;
-    const off2 = ((-cam * 0.3) % per2 + per2) % per2;
-    for (let k = -1; k <= 1; k++) {
+    const rigs = tile('gulf-rigs', per2, GY - 205, 205, (c, ox) => {
       for (let i = 0; i < 5; i++) {
-        const x = off2 + k * per2 + rnd(i * 13 + 7) * per2, w = 70 + rnd(i * 3) * 60, y = GY - 122 + rnd(i + 20) * 30;
-        ctx.fillStyle = 'rgba(0,0,0,0.5)';
-        ctx.fillRect(x, y - 8, w, 8);
-        ctx.fillRect(x + w - 18, y - 22, 12, 14);
-        ctx.fillStyle = 'rgba(255,255,200,0.7)';
-        ctx.fillRect(x + w - 13, y - 26, 2, 2);
+        const x = ox + rnd(i * 13 + 7) * per2, w = 70 + rnd(i * 3) * 60, y = GY - 122 + rnd(i + 20) * 30;
+        c.fillStyle = 'rgba(0,0,0,0.5)';
+        c.fillRect(x, y - 8, w, 8);
+        c.fillRect(x + w - 18, y - 22, 12, 14);
+        c.fillStyle = 'rgba(255,255,200,0.7)';
+        c.fillRect(x + w - 13, y - 26, 2, 2);
       }
       for (let i = 0; i < 3; i++) {
+        const x = ox + 200 + i * 480 + rnd(i + 40) * 200;
+        c.fillStyle = 'rgba(0,0,0,0.5)';
+        c.fillRect(x, GY - 200, 6, 80);
+        c.fillRect(x - 10, GY - 130, 26, 12);
+      }
+    });
+    blitTile(ctx, rigs, cam, 0.3);
+    const off2 = ((-cam * 0.3) % per2 + per2) % per2;
+    for (let k = -1; k <= 1; k++) {
+      for (let i = 0; i < 3; i++) {
         const x = off2 + k * per2 + 200 + i * 480 + rnd(i + 40) * 200;
-        ctx.fillStyle = 'rgba(0,0,0,0.5)';
-        ctx.fillRect(x, GY - 200, 6, 80);
-        ctx.fillRect(x - 10, GY - 130, 26, 12);
+        if (x < -20 || x > W + 20) continue;
         const fl = 0.6 + 0.4 * Math.sin(G.time * 9 + i * 2);
         ctx.fillStyle = `rgba(255,140,30,${(0.7 * fl).toFixed(2)})`;
         ctx.beginPath(); ctx.ellipse(x + 3, GY - 208, 6, 10 + 6 * fl, 0, 0, Math.PI * 2); ctx.fill();
@@ -301,59 +333,51 @@
       }
     }
   }
+  const AURORA = ['90,220,255', '120,255,190', '150,120,255'];
   function drawArcticBackdrop(ctx, G, cam) {
-    // aurora ribbons
+    // aurora ribbons: animated, so drawn live but with a coarser step and cached gradients
     for (let k = 0; k < 3; k++) {
-      const baseY = 70 + k * 45, hue = k === 1 ? '120,255,190' : k === 2 ? '150,120,255' : '90,220,255';
+      const baseY = 70 + k * 45, hue = AURORA[k];
       ctx.beginPath();
-      for (let x = -20; x <= W + 20; x += 12) {
+      for (let x = -24; x <= W + 24; x += 24) {
         const y = baseY + Math.sin(x * 0.012 + G.time * 0.6 + k * 2 - cam * 0.0008) * 22 + Math.sin(x * 0.03 - G.time * 0.4) * 8;
-        if (x === -20) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        if (x === -24) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
-      for (let x = W + 20; x >= -20; x -= 12) {
+      for (let x = W + 24; x >= -24; x -= 24) {
         const y = baseY + 70 + Math.sin(x * 0.012 + G.time * 0.6 + k * 2 - cam * 0.0008) * 22 + Math.sin(x * 0.025 + G.time * 0.5) * 10;
         ctx.lineTo(x, y);
       }
       ctx.closePath();
-      const gg = ctx.createLinearGradient(0, baseY, 0, baseY + 80);
-      gg.addColorStop(0, `rgba(${hue},0.0)`); gg.addColorStop(0.4, `rgba(${hue},0.22)`); gg.addColorStop(1, `rgba(${hue},0.0)`);
-      ctx.fillStyle = gg;
+      ctx.fillStyle = grad(ctx, 'aurora' + k, 0, baseY, 0, baseY + 80, [0, `rgba(${hue},0.0)`, 0.4, `rgba(${hue},0.22)`, 1, `rgba(${hue},0.0)`]);
       ctx.fill();
     }
     // snowy mountains
-    const per = 1700;
-    const off = ((-cam * 0.15) % per + per) % per;
-    for (let k = -1; k <= 1; k++) {
-      ctx.beginPath();
-      ctx.moveTo(off + k * per, GY - 110);
-      for (let i = 0; i <= 14; i++) ctx.lineTo(off + k * per + (i / 14) * per, GY - 150 - rnd(i * 7 + 5) * 130);
-      ctx.lineTo(off + k * per + per, GY - 110);
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(230,240,255,0.35)';
-      ctx.fill();
-    }
+    blitTile(ctx, ridgeTile('arctic-mts', 1700, GY - 110, 150, 130, 14, [7, 5], 'rgba(230,240,255,0.35)'), cam, 0.15);
     // icy sea band
-    const sea = ctx.createLinearGradient(0, GY - 120, 0, GY);
-    sea.addColorStop(0, 'rgba(40,110,150,0.85)');
-    sea.addColorStop(1, 'rgba(10,40,70,0.95)');
-    ctx.fillStyle = sea;
+    ctx.fillStyle = grad(ctx, 'arctic-sea', 0, GY - 120, 0, GY, [0, 'rgba(40,110,150,0.85)', 1, 'rgba(10,40,70,0.95)']);
     ctx.fillRect(0, GY - 120, W, 120);
     ctx.fillStyle = 'rgba(255,255,255,0.35)';
     ctx.fillRect(0, GY - 120, W, 1);
     // icebergs on the water
-    const per2 = 1400;
-    const off2 = ((-cam * 0.3) % per2 + per2) % per2;
-    for (let k = -1; k <= 1; k++) {
+    const bergs = tile('arctic-bergs', 1400, GY - 185, 185, (c, ox) => {
       for (let i = 0; i < 6; i++) {
-        const x = off2 + k * per2 + rnd(i * 11 + 3) * per2, w = 50 + rnd(i * 5) * 90, h = 25 + rnd(i * 3 + 1) * 45, y = GY - 110 + rnd(i + 30) * 60;
-        ctx.fillStyle = 'rgba(235,248,255,0.9)';
-        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w * 0.3, y - h); ctx.lineTo(x + w * 0.55, y - h * 0.6); ctx.lineTo(x + w * 0.75, y - h * 0.9); ctx.lineTo(x + w, y); ctx.closePath(); ctx.fill();
-        ctx.fillStyle = 'rgba(120,190,230,0.6)';
-        ctx.fillRect(x + 4, y - 3, w - 8, 3);
+        const x = ox + rnd(i * 11 + 3) * 1400, w = 50 + rnd(i * 5) * 90, h = 25 + rnd(i * 3 + 1) * 45, y = GY - 110 + rnd(i + 30) * 60;
+        c.fillStyle = 'rgba(235,248,255,0.9)';
+        c.beginPath(); c.moveTo(x, y); c.lineTo(x + w * 0.3, y - h); c.lineTo(x + w * 0.55, y - h * 0.6); c.lineTo(x + w * 0.75, y - h * 0.9); c.lineTo(x + w, y); c.closePath(); c.fill();
+        c.fillStyle = 'rgba(120,190,230,0.6)';
+        c.fillRect(x + 4, y - 3, w - 8, 3);
       }
-    }
+    });
+    blitTile(ctx, bergs, cam, 0.3);
   }
 
+  const WATER = {
+    ice: [0, '#9fd9ff', 0.15, '#2f7fb3', 1, '#0a2a44'],
+    syrup: [0, '#f6c65a', 0.15, '#b5721a', 1, '#4a2a08'],
+    canal: [0, '#6fc7d8', 0.15, '#2a8fa8', 1, '#0a3a4a'],
+    void: [0, '#1a1a3a', 0.2, '#050510', 1, '#000000'],
+    sea: [0, '#2d8fa8', 0.15, '#0f5f78', 1, '#03202c'],
+  };
   function drawGround(ctx, G, pal, level) {
     const cam = G.camX;
     ctx.fillStyle = pal.ground;
@@ -419,9 +443,8 @@
       for (const z of level.zones) {
         const l = z.x0 - cam, r = z.x1 - cam;
         if (r < 0 || l > W) continue;
-        const ig = ctx.createLinearGradient(0, GY, 0, H);
-        ig.addColorStop(0, '#eaf8ff'); ig.addColorStop(0.3, '#9fd8f5'); ig.addColorStop(1, '#2a6a99');
-        ctx.fillStyle = ig; ctx.fillRect(l, GY, r - l, H - GY);
+        ctx.fillStyle = grad(ctx, 'ice-zone', 0, GY, 0, H, [0, '#eaf8ff', 0.3, '#9fd8f5', 1, '#2a6a99']);
+        ctx.fillRect(l, GY, r - l, H - GY);
         ctx.save(); ctx.beginPath(); ctx.rect(l, GY, r - l, H - GY); ctx.clip();
         ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 2;
         const shift = (G.time * 160) % 90;
@@ -439,9 +462,8 @@
       for (const z of level.lowg) {
         const l = z.x0 - cam, r = z.x1 - cam;
         if (r < 0 || l > W) continue;
-        const fg = ctx.createLinearGradient(0, 0, 0, GY);
-        fg.addColorStop(0, 'rgba(140,90,255,0.04)'); fg.addColorStop(1, 'rgba(140,90,255,0.22)');
-        ctx.fillStyle = fg; ctx.fillRect(l, 0, r - l, GY);
+        ctx.fillStyle = grad(ctx, 'lowg', 0, 0, 0, GY, [0, 'rgba(140,90,255,0.04)', 1, 'rgba(140,90,255,0.22)']);
+        ctx.fillRect(l, 0, r - l, GY);
         ctx.save(); ctx.beginPath(); ctx.rect(l, 0, r - l, GY); ctx.clip();
         ctx.fillStyle = 'rgba(220,200,255,0.7)';
         for (let i = 0; i < 40; i++) {
@@ -454,10 +476,7 @@
         ctx.fillStyle = 'rgba(200,180,255,0.6)'; ctx.fillRect(l, 0, 2, GY); ctx.fillRect(r - 2, 0, 2, GY);
       }
     }
-    const g2 = ctx.createLinearGradient(0, GY, 0, H);
-    g2.addColorStop(0, 'rgba(0,0,0,0)');
-    g2.addColorStop(1, 'rgba(0,0,0,0.55)');
-    ctx.fillStyle = g2;
+    ctx.fillStyle = grad(ctx, 'ground-shade', 0, GY, 0, H, [0, 'rgba(0,0,0,0)', 1, 'rgba(0,0,0,0.55)']);
     ctx.fillRect(0, GY, W, H - GY);
     ctx.fillStyle = pal.gline;
     ctx.fillRect(0, GY - 2, W, 3);
@@ -471,13 +490,7 @@
       for (const gp of level.gaps) {
         const l = gp.l - cam, r = gp.r - cam;
         if (r < 0 || l > W) continue;
-        const wg = ctx.createLinearGradient(0, GY - 4, 0, H);
-        if (water === 'ice') { wg.addColorStop(0, '#9fd9ff'); wg.addColorStop(0.15, '#2f7fb3'); wg.addColorStop(1, '#0a2a44'); }
-        else if (water === 'syrup') { wg.addColorStop(0, '#f6c65a'); wg.addColorStop(0.15, '#b5721a'); wg.addColorStop(1, '#4a2a08'); }
-        else if (water === 'canal') { wg.addColorStop(0, '#6fc7d8'); wg.addColorStop(0.15, '#2a8fa8'); wg.addColorStop(1, '#0a3a4a'); }
-        else if (water === 'void') { wg.addColorStop(0, '#1a1a3a'); wg.addColorStop(0.2, '#050510'); wg.addColorStop(1, '#000000'); }
-        else { wg.addColorStop(0, '#2d8fa8'); wg.addColorStop(0.15, '#0f5f78'); wg.addColorStop(1, '#03202c'); }
-        ctx.fillStyle = wg;
+        ctx.fillStyle = grad(ctx, 'water-' + water, 0, GY - 4, 0, H, WATER[water] || WATER.sea);
         ctx.fillRect(l, GY - 4, r - l, H - GY + 4);
         ctx.save(); ctx.beginPath(); ctx.rect(l, GY - 4, r - l, H - GY + 4); ctx.clip();
         if (water === 'void') {
@@ -506,10 +519,7 @@
       const l = s.l - cam, r = s.r - cam;
       if (r < 0 || l > W) continue;
       const rock = level.def.backdrop === 'space';
-      const g = ctx.createLinearGradient(0, 0, 0, CY);
-      if (rock) { g.addColorStop(0, '#4a4a56'); g.addColorStop(0.7, '#6e6e7a'); g.addColorStop(1, '#8a8a90'); }
-      else { g.addColorStop(0, '#f4fbff'); g.addColorStop(0.7, '#cfe9fb'); g.addColorStop(1, '#9fd4f5'); }
-      ctx.fillStyle = g;
+      ctx.fillStyle = grad(ctx, rock ? 'ceil-rock' : 'ceil-ice', 0, 0, 0, CY, rock ? [0, '#4a4a56', 0.7, '#6e6e7a', 1, '#8a8a90'] : [0, '#f4fbff', 0.7, '#cfe9fb', 1, '#9fd4f5']);
       ctx.fillRect(l, 0, r - l, CY);
       ctx.save(); ctx.beginPath(); ctx.rect(l, 0, r - l, CY + 12); ctx.clip();
       ctx.fillStyle = rock ? '#8a8a90' : '#9fd4f5';
@@ -911,10 +921,7 @@
     if (o.flip) { ctx.moveTo(x, base); ctx.lineTo(x + B / 2, base + B); ctx.lineTo(x + B, base); }
     else { ctx.moveTo(x, base); ctx.lineTo(x + B / 2, base - B); ctx.lineTo(x + B, base); }
     ctx.closePath();
-    const g = ctx.createLinearGradient(x, o.flip ? base + B : base - B, x, base);
-    g.addColorStop(0, pal.spike);
-    g.addColorStop(1, pal.accent);
-    ctx.fillStyle = g;
+    ctx.fillStyle = grad(ctx, `spike|${o.flip ? 1 : 0}|${base}|${pal.spike}|${pal.accent}`, 0, o.flip ? base + B : base - B, 0, base, [0, pal.spike, 1, pal.accent]);
     ctx.fill();
     ctx.lineWidth = 2;
     ctx.strokeStyle = 'rgba(0,0,0,0.75)';
@@ -1801,7 +1808,7 @@
     ctx.save();
     if (st.grav === 1) { ctx.translate(sx, st.y - 36); ctx.rotate(st.rot + (onIce ? -0.14 : 0)); }
     else { ctx.translate(sx, st.y + 36); ctx.scale(1, -1); ctx.rotate(st.rot + (onIce ? -0.14 : 0)); }
-    ctx.drawImage(fc, -fc.width / 2, 36 - fc.height);
+    ctx.drawImage(fc, -fc.lw / 2, 36 - fc.lh, fc.lw, fc.lh);
     ctx.restore();
   }
 
@@ -1835,9 +1842,8 @@
     const pct = Math.min(100, Math.max(0, (G.st ? G.st.x : 0) / lv.lengthPx * 100));
     const bx0 = 330, by0 = 14, bw = 300, bh = 12;
     ctx.fillStyle = 'rgba(0,0,0,0.55)'; roundRect(ctx, bx0 - 2, by0 - 2, bw + 4, bh + 4, 8); ctx.fill();
-    const g = ctx.createLinearGradient(bx0, 0, bx0 + bw, 0);
-    g.addColorStop(0, '#2ecc71'); g.addColorStop(1, pal.accentHex);
-    ctx.fillStyle = g; roundRect(ctx, bx0, by0, Math.max(4, bw * pct / 100), bh, 6); ctx.fill();
+    ctx.fillStyle = grad(ctx, 'hud|' + pal.accentHex, bx0, 0, bx0 + bw, 0, [0, '#2ecc71', 1, pal.accentHex]);
+    roundRect(ctx, bx0, by0, Math.max(4, bw * pct / 100), bh, 6); ctx.fill();
     text(ctx, `${pct.toFixed(0)}%`, bx0 + bw + 16, by0 + bh / 2, `bold 16px ${TITLE_FONT}`, '#fff', 'left', 'rgba(0,0,0,0.8)', 3);
     text(ctx, `ATTEMPT ${G.attempt}`, 16, 20, `bold 16px ${TITLE_FONT}`, '#fff', 'left', 'rgba(0,0,0,0.8)', 3);
     text(ctx, def.name, 16, 40, `bold 11px ${UI_FONT}`, 'rgba(255,255,255,0.75)', 'left', 'rgba(0,0,0,0.8)', 3);
@@ -1913,8 +1919,9 @@
   function uiButtons(G) {
     const b = [], s = G.state;
     if (s === 'menu') {
-      b.push({ id: 'practice', x: 14, y: 110, w: 142, h: 36, label: 'PRACTICE', value: G.practice ? 'ON' : 'OFF', on: G.practice });
-      b.push({ id: 'mute', x: 14, y: 152, w: 142, h: 36, label: 'SOUND', value: G.muted ? 'OFF' : 'ON', on: !G.muted });
+      b.push({ id: 'practice', x: 14, y: 110, w: 142, h: 34, label: 'PRACTICE', value: G.practice ? 'ON' : 'OFF', on: G.practice });
+      b.push({ id: 'mute', x: 14, y: 150, w: 142, h: 34, label: 'SOUND', value: G.muted ? 'OFF' : 'ON', on: !G.muted });
+      b.push({ id: 'sync', x: 14, y: 190, w: 142, h: 34, label: 'SYNC', value: G.offsetMs ? `${G.offsetMs > 0 ? '+' : ''}${G.offsetMs} ms` : 'AUTO', neutral: true });
       if (G.fsAvailable) b.push({ id: 'fullscreen', x: W - 60, y: 8, w: 48, h: 40, icon: G.fullscreen ? 'exitfs' : 'fs' });
     } else if (s === 'playing' || s === 'dead') {
       b.push({ id: 'pause', x: W - 62, y: 8, w: 50, h: 40, icon: 'pause' });
@@ -1927,6 +1934,13 @@
       b.push({ id: 'quit', x: x0, y: y0 + 112, w: 410, h: 46, label: 'QUIT TO MENU' });
     } else if (s === 'complete') {
       b.push({ id: 'menu', x: W / 2 - 140, y: 420, w: 280, h: 46, label: 'BACK TO MENU', primary: true });
+    } else if (s === 'calibrate' && G.calib) {
+      if (G.calib.phase === 'tap') b.push({ id: 'calib_cancel', x: W / 2 - 80, y: 436, w: 160, h: 40, label: 'CANCEL' });
+      else {
+        b.push({ id: 'calib_done', x: W / 2 - 320, y: 420, w: 200, h: 46, label: 'DONE', primary: true });
+        b.push({ id: 'calib_again', x: W / 2 - 100, y: 420, w: 200, h: 46, label: 'TAP AGAIN' });
+        b.push({ id: 'calib_reset', x: W / 2 + 120, y: 420, w: 200, h: 46, label: 'RESET TO AUTO' });
+      }
     }
     return b;
   }
@@ -1948,7 +1962,7 @@
       if (b.icon) { drawUiIcon(ctx, b.icon, cx, cy); continue; }
       if (b.value != null) {
         text(ctx, b.label, b.x + 14, cy + 1, `bold 15px ${TITLE_FONT}`, '#fff', 'left');
-        text(ctx, b.value, b.x + b.w - 14, cy + 1, `bold 15px ${TITLE_FONT}`, b.on ? '#7dffb0' : '#ff9d9d', 'right');
+        text(ctx, b.value, b.x + b.w - 14, cy + 1, `bold 15px ${TITLE_FONT}`, b.neutral ? '#ffe9a0' : b.on ? '#7dffb0' : '#ff9d9d', 'right');
       } else text(ctx, b.label, cx, cy + 1, `bold 16px ${TITLE_FONT}`, b.primary ? '#1a0a0a' : '#fff', 'center');
     }
   }
@@ -1963,9 +1977,8 @@
     ctx.lineJoin = 'round';
     ctx.lineWidth = size * 0.16; ctx.strokeStyle = '#1a0a0a'; ctx.strokeText('TRUMP DASH', x + 4, y + 6);
     ctx.lineWidth = size * 0.16; ctx.strokeStyle = '#ffd400'; ctx.strokeText('TRUMP DASH', x, y);
-    const g = ctx.createLinearGradient(0, y - size / 2, 0, y + size / 2);
-    g.addColorStop(0, '#c8102e'); g.addColorStop(0.48, '#c8102e'); g.addColorStop(0.5, '#ffffff'); g.addColorStop(0.62, '#ffffff'); g.addColorStop(0.64, '#0033a0'); g.addColorStop(1, '#0033a0');
-    ctx.fillStyle = g; ctx.fillText('TRUMP DASH', x, y);
+    ctx.fillStyle = grad(ctx, `title|${y}|${size}`, 0, y - size / 2, 0, y + size / 2, [0, '#c8102e', 0.48, '#c8102e', 0.5, '#ffffff', 0.62, '#ffffff', 0.64, '#0033a0', 1, '#0033a0']);
+    ctx.fillText('TRUMP DASH', x, y);
     ctx.restore();
   }
   // level-select card geometry (shared with input hit-testing)
@@ -1980,13 +1993,13 @@
     const x0 = 170 + (780 - total) / 2;
     return { x: x0 + i * (w + gap), y: 150, w, h };
   }
+  function drawRunFrame(ctx, x) { const fc = runFrames[2]; if (fc) ctx.drawImage(fc, x, GY - fc.lh, fc.lw, fc.lh); }
   function drawThumb(ctx, def, x, y, w, h, G) {
     ctx.save();
     roundRect(ctx, x, y, w, h, 8); ctx.clip();
     const p = def.palettes.drop;
-    const g = ctx.createLinearGradient(0, y, 0, y + h);
-    g.addColorStop(0, p.top); g.addColorStop(1, p.bot);
-    ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = grad(ctx, `thumb|${def.id}|${y}|${h}`, 0, y, 0, y + h, [0, p.top, 1, p.bot]);
+    ctx.fillRect(x, y, w, h);
     ctx.fillStyle = p.ground; ctx.fillRect(x, y + h - 22, w, 22);
     ctx.fillStyle = p.gline; ctx.fillRect(x, y + h - 23, w, 2);
     const s = 0.34;
@@ -1998,33 +2011,33 @@
       drawTruck(ctx, (w * 0.78) / s, fakeG, null);
       drawSpike(ctx, { x: (w * 0.12) / s, base: GY, flip: false }, (w * 0.12) / s, pal);
       drawSpike(ctx, { x: (w * 0.12) / s + 40, base: GY, flip: false }, (w * 0.12) / s + 40, pal);
-      if (runFrames[2]) ctx.drawImage(runFrames[2], (w * 0.33) / s, GY - 72);
+      drawRunFrame(ctx, (w * 0.33) / s);
     } else if (def.ending.type === 'toll') {
       drawTanker(ctx, (w * 0.98) / s, GY - 4, 0.5, '#7a1f1f', fakeG, 0);
       drawTollGate(ctx, (w * 0.52) / s, fakeG, { arm: 1, stamp1: 0, stamp2: 0, subSign: 0, trumpIn: 0, tankers: [] });
       drawMine(ctx, { cx: (w * 0.14) / s, cy: GY - 46, r: 16 }, (w * 0.14) / s, fakeG);
-      if (runFrames[2]) ctx.drawImage(runFrames[2], (w * 0.28) / s, GY - 72);
+      drawRunFrame(ctx, (w * 0.28) / s);
     } else if (def.ending.type === 'plaque') {
       drawLander(ctx, (w * 0.8) / s, GY, 0.9);
       drawSpike(ctx, { x: (w * 0.1) / s, base: GY, flip: false, skin: 'alien' }, (w * 0.1) / s, Object.assign({ G: fakeG }, pal));
       drawMine(ctx, { cx: (w * 0.5) / s, cy: GY - 120, r: 16, skin: 'asteroid' }, (w * 0.5) / s, fakeG);
-      if (runFrames[2]) ctx.drawImage(runFrames[2], (w * 0.3) / s, GY - 72);
+      drawRunFrame(ctx, (w * 0.3) / s);
     } else if (def.ending.type === 'canal') {
       drawCanalGate(ctx, (w * 0.05) / s - 120, fakeG, { gate: 1, ship: 0.42, stamp1: 0, stamp2: 0, subSign: 0 });
       drawSpike(ctx, { x: (w * 0.1) / s, base: GY, flip: false, skin: 'croc' }, (w * 0.1) / s, pal);
-      if (runFrames[2]) ctx.drawImage(runFrames[2], (w * 0.3) / s, GY - 72);
+      drawRunFrame(ctx, (w * 0.3) / s);
     } else if (def.ending.type === 'sign') {
       ctx.save(); ctx.scale(0.62, 0.62); ctx.translate(0, GY * 0.6);
       drawBorderSign(ctx, (w * 0.05) / (s * 0.62), fakeG, { stamp1: 0, stamp2: 0, flagY: 1, flag2Y: 0 });
       ctx.restore();
       drawSpike(ctx, { x: (w * 0.12) / s, base: GY, flip: false, skin: 'mountie' }, (w * 0.12) / s, pal);
       drawMine(ctx, { cx: (w * 0.62) / s, cy: GY - 18, r: 16, skin: 'puck' }, (w * 0.62) / s, fakeG);
-      if (runFrames[2]) ctx.drawImage(runFrames[2], (w * 0.32) / s, GY - 72);
+      drawRunFrame(ctx, (w * 0.32) / s);
     } else {
       drawIsland(ctx, (w * 0.72) / s, GY - 112, 190, 220, null);
       drawSpike(ctx, { x: (w * 0.1) / s, base: GY, flip: false, skin: 'bear' }, (w * 0.1) / s, pal);
       drawPortal(ctx, { cx: (w * 0.42) / s, cy: GY - 150, r: 34, dir: -1, label: '' }, (w * 0.42) / s, fakeG);
-      if (runFrames[2]) ctx.drawImage(runFrames[2], (w * 0.24) / s, GY - 72);
+      drawRunFrame(ctx, (w * 0.24) / s);
     }
     ctx.restore();
   }
@@ -2085,13 +2098,47 @@
     text(ctx, G.touch ? 'TAP A CARD TO CHOOSE A LEVEL  ·  TAP IT AGAIN TO START' : `← →  or  1–${n}  or click a card to choose a level`, W / 2 + 60, py + 26, `13px ${UI_FONT}`, '#e8e8ff', 'center', 'rgba(0,0,0,0.8)', 3);
     const lines = G.touch ? [
       'TAP — jump (hold to keep jumping)     PAUSE button top-right during a run',
-      'Practice mode adds checkpoints. The toggles at the left are also on the pause screen.',
+      'PRACTICE adds checkpoints. SYNC tunes tap timing: do it once with the headphones you play with.',
     ] : [
       'SPACE / ↑ / CLICK — jump (hold to keep jumping)',
-      'P — practice mode with checkpoints     M — mute     ESC — pause     R — restart     F — fullscreen     H — hitboxes',
+      'P — practice mode     M — mute     C — sync taps to the beat     ESC — pause     R — restart     F — fullscreen     H — hitboxes',
     ];
     lines.forEach((l, i) => text(ctx, l, W / 2 + 60, (grid ? 480 : 460) + i * (grid ? 17 : 20), `${grid ? 12 : 13}px ${UI_FONT}`, '#e8e8ff', 'center', 'rgba(0,0,0,0.8)', 3));
     text(ctx, 'Jumps land on the beat: listen for the clap. Parody — not affiliated with any person, government or oil company.', W / 2, H - 16, `12px ${UI_FONT}`, 'rgba(255,255,255,0.75)', 'center', 'rgba(0,0,0,0.8)', 3);
+  }
+  function drawCalibrate(ctx, G) { // buttons come from uiButtons / drawButtons
+    const c = G.calib;
+    if (!c) return;
+    drawOverlayPanel(ctx, W / 2 - 330, 54, 660, 434);
+    text(ctx, 'TAP TO THE BEAT', W / 2, 96, `bold 40px ${TITLE_FONT}`, '#ffd400', 'center', '#3a2a00', 6);
+    if (c.phase === 'tap') {
+      text(ctx, (G.touch ? 'Tap the screen' : 'Press SPACE or click') + ' on every click, with the headphones or speaker you play with.', W / 2, 134, `15px ${UI_FONT}`, '#fff', 'center');
+      const ready = c.song >= 0.3, beat = Math.max(0, c.song) / C.BEAT_SEC, ph = beat % 1; // ph = 0 on the click
+      const cx = W / 2, cy = 272, r = 60 + 16 * Math.pow(1 - ph, 3);
+      ctx.lineWidth = 10; ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.beginPath(); ctx.arc(cx, cy, 94, 0, Math.PI * 2); ctx.stroke();
+      if (c.taps.length) { ctx.strokeStyle = '#7dffb0'; ctx.beginPath(); ctx.arc(cx, cy, 94, -Math.PI / 2, -Math.PI / 2 + (c.taps.length / c.need) * Math.PI * 2); ctx.stroke(); }
+      ctx.fillStyle = ready ? `rgba(255,212,0,${(0.55 + 0.45 * Math.pow(1 - ph, 2)).toFixed(2)})` : 'rgba(255,255,255,0.3)';
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+      text(ctx, ready ? String((Math.floor(beat) % 4) + 1) : 'READY', cx, cy + 2, `bold ${ready ? 48 : 22}px ${TITLE_FONT}`, '#1a0a0a', 'center');
+      if (c.last != null && G.time - c.lastAt < 0.25) { ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(cx, cy, 80 + (G.time - c.lastAt) * 140, 0, Math.PI * 2); ctx.stroke(); }
+      text(ctx, `${c.taps.length} / ${c.need}`, cx, 394, `bold 22px ${TITLE_FONT}`, '#fff', 'center');
+      if (c.last != null) text(ctx, `last tap ${c.last >= 0 ? '+' : ''}${Math.round(c.last * 1000)} ms`, cx, 418, `13px ${UI_FONT}`, '#cfd3ff', 'center');
+    } else {
+      const late = Math.round(c.measured * 1000), auto = Math.round(c.auto * 1000);
+      text(ctx, `Your taps arrive ${Math.abs(late)} ms ${late >= 0 ? 'after' : 'before'} the click.`, W / 2, 148, `bold 20px ${UI_FONT}`, '#fff', 'center');
+      text(ctx, `Sync offset set to ${G.offsetMs >= 0 ? '+' : ''}${G.offsetMs} ms` + (auto ? ` on top of the ${auto} ms your device reports.` : '.'), W / 2, 186, `15px ${UI_FONT}`, '#cfd3ff', 'center');
+      text(ctx, 'The music now starts that much earlier, so taps that feel on the beat land on the beat.', W / 2, 212, `15px ${UI_FONT}`, '#cfd3ff', 'center');
+      const sx0 = W / 2 - 240, sw = 480, sy = 300, px = (e) => sx0 + sw / 2 + Math.max(-1, Math.min(1, e / 0.15)) * (sw / 2 - 10);
+      ctx.fillStyle = 'rgba(255,255,255,0.12)'; roundRect(ctx, sx0, sy - 14, sw, 28, 8); ctx.fill();
+      ctx.fillStyle = '#7dffb0'; ctx.fillRect(sx0 + sw / 2 - 1, sy - 22, 2, 44);
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      for (const e of c.taps) { ctx.beginPath(); ctx.arc(px(e), sy, 5, 0, Math.PI * 2); ctx.fill(); }
+      ctx.fillStyle = '#ffd400'; ctx.fillRect(px(c.measured) - 2, sy - 20, 4, 40);
+      text(ctx, '-150 ms', sx0, sy + 32, `12px ${UI_FONT}`, '#cfd3ff', 'left');
+      text(ctx, 'on the beat', W / 2, sy + 32, `12px ${UI_FONT}`, '#cfd3ff', 'center');
+      text(ctx, '+150 ms', sx0 + sw, sy + 32, `12px ${UI_FONT}`, '#cfd3ff', 'right');
+      text(ctx, 'Recalibrate if you switch to Bluetooth headphones or another device.', W / 2, 376, `13px ${UI_FONT}`, 'rgba(255,255,255,0.7)', 'center');
+    }
   }
   function drawPaused(ctx, G) { // the buttons themselves come from uiButtons / drawButtons
     drawOverlayPanel(ctx, W / 2 - 240, 116, 480, 310);
@@ -2127,14 +2174,15 @@
 
   function draw(ctx, G) {
     ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0);
     if (G.shake > 0.5) ctx.translate((Math.random() - 0.5) * G.shake, (Math.random() - 0.5) * G.shake);
-    if (G.state === 'menu' || G.state === 'loading') {
+    if (G.state === 'menu' || G.state === 'loading' || G.state === 'calibrate') {
       const def = G.levels[G.levelIdx] || G.levels[0];
       const pal = paletteOf(def, 'drop');
       drawBackground(ctx, G, pal, def.backdrop);
       drawGround(ctx, G, pal, null);
       if (G.state === 'menu') { drawMenu(ctx, G); drawButtons(ctx, G); }
+      else if (G.state === 'calibrate') { drawCalibrate(ctx, G); drawButtons(ctx, G); }
       else text(ctx, 'LOADING…', W / 2, H / 2, `bold 30px ${TITLE_FONT}`, '#fff', 'center');
       ctx.restore();
       return;
@@ -2155,5 +2203,5 @@
     ctx.restore();
   }
 
-  root.TD_RENDER = { init, draw, palette, drawPose, menuCardRect, loadImage, uiButtons };
+  root.TD_RENDER = { init, draw, palette, drawPose, menuCardRect, loadImage, uiButtons, setScale };
 })(typeof window !== 'undefined' ? window : globalThis);
