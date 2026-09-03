@@ -110,12 +110,12 @@
     G.camLock = G.level.lengthPx - def.ending.camOffset;
     G.camX = G.camLock;
     audio.stopSong(true);
-    audio.endingPad(type === 'toll' ? 'em' : type === 'map' || type === 'sign' ? 'major' : 'am');
+    audio.endingPad(type === 'toll' || type === 'canal' ? 'em' : type === 'map' || type === 'sign' ? 'major' : 'am');
     if (type === 'truck') audio.engineStart();
     G.attemptX = null;
     G.ending = {
       type, phase: 'enter', t0: G.time, goalX: st.x, truckX0: st.x, truckX: st.x, wheel: 0,
-      stamp1: 0, stamp2: 0, subSign: 0, arm: 0, slide: 0, flagY: 1, flag2Y: 0, trumpIn: 0.0001, banner: null, bannerT: 0, bannerT0: 0, exhaustT: 0,
+      stamp1: 0, stamp2: 0, subSign: 0, arm: 0, slide: 0, flagY: 1, flag2Y: 0, gate: 0, ship: 0, trumpIn: 0.0001, banner: null, bannerT: 0, bannerT0: 0, exhaustT: 0,
       tankers: [], tolls: 0, nextTankerAt: 0,
     };
     recordBest(def.id, 100);
@@ -243,6 +243,38 @@
           if (t >= 3.6) { next('done'); completeLevel(); }
           break;
         }
+      }
+      return;
+    }
+    if (e.type === 'canal') {
+      const sx = e.goalX + 305, sy = 170;
+      switch (e.phase) {
+        case 'enter':
+          e.trumpIn = 1;
+          if (t >= 0.9) next('stamp1');
+          break;
+        case 'stamp1':
+          e.stamp1 = Math.min(1, t / 0.32);
+          if (t >= 0.32 && !e.hit1) { e.hit1 = true; audio.sfxStamp(); G.shake = 14; burstInk(sx, sy, '#c8102e'); banner('TAKEN BACK'); }
+          if (t >= 1.5) next('stamp2');
+          break;
+        case 'stamp2':
+          e.stamp2 = Math.min(1, t / 0.32);
+          if (t >= 0.32 && !e.hit2) { e.hit2 = true; audio.sfxStamp(); G.shake = 20; burstInk(sx, sy, '#ffd400'); banner('TRUMP CANAL'); }
+          if (t >= 0.9) e.subSign = Math.min(1, (t - 0.9) / 0.3);
+          if (t >= 1.9) { next('gate'); audio.sfxWhoosh(1.0); banner('OPENING THE LOCKS'); }
+          break;
+        case 'gate':
+          e.gate = Math.min(1, t / 1.1);
+          if (t >= 1.1 && !e.hitGate) { e.hitGate = true; audio.sfxClank(); G.shake = 10; }
+          if (t >= 1.5) { next('ship'); audio.sfxHorn(); }
+          break;
+        case 'ship':
+          e.ship = Math.min(1, t / 3.8);
+          if (t >= 1.2 && !e.hit3) { e.hit3 = true; audio.sfxCash(); audio.fanfare(); banner('FOOLISH GIFT: RETURNED'); G.stats.extra = 1; }
+          if (t >= 2.6 && !e.hit4) { e.hit4 = true; audio.sfxHorn(); }
+          if (t >= 4.4) { next('done'); completeLevel(); }
+          break;
       }
       return;
     }
@@ -467,7 +499,7 @@
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     frameCount++;
-    if (dbgEl) dbgEl.textContent = JSON.stringify({ frames: frameCount, now, time: G.time, state: G.state, level: G.level && G.level.def.id, beat: G.beat, attempt: G.attempt, checkpoints: G.checkpoints.length, practice: G.practice, runPractice: G.runPractice, best: G.best, pbest: G.pbest, wins: G.wins, pwins: G.pwins, autoplay: !!G.autoplay, x: G.st && G.st.x, grav: G.st && G.st.grav, speedMul: G.st && G.st.speedMul, song: audio.songTime(), ending: G.ending && { phase: G.ending.phase, trumpIn: G.ending.trumpIn, stamp1: G.ending.stamp1, stamp2: G.ending.stamp2, arm: G.ending.arm, slide: G.ending.slide, flagY: G.ending.flagY, flag2Y: G.ending.flag2Y, tolls: G.ending.tolls, tankers: G.ending.tankers.length, truckX: G.ending.truckX, truckX0: G.ending.truckX0 }, audio: audio.ctx ? audio.ctx.state + ':' + audio.ctx.currentTime.toFixed(2) + ':step' + audio.nextStep : 'none', stats: G.stats, err: G.lastError || null });
+    if (dbgEl) dbgEl.textContent = JSON.stringify({ frames: frameCount, now, time: G.time, state: G.state, level: G.level && G.level.def.id, beat: G.beat, attempt: G.attempt, checkpoints: G.checkpoints.length, practice: G.practice, runPractice: G.runPractice, best: G.best, pbest: G.pbest, wins: G.wins, pwins: G.pwins, autoplay: !!G.autoplay, x: G.st && G.st.x, grav: G.st && G.st.grav, speedMul: G.st && G.st.speedMul, song: audio.songTime(), ending: G.ending && { phase: G.ending.phase, trumpIn: G.ending.trumpIn, stamp1: G.ending.stamp1, stamp2: G.ending.stamp2, subSign: G.ending.subSign, arm: G.ending.arm, slide: G.ending.slide, flagY: G.ending.flagY, flag2Y: G.ending.flag2Y, gate: G.ending.gate, ship: G.ending.ship, tolls: G.ending.tolls, tankers: G.ending.tankers.length, truckX: G.ending.truckX, truckX0: G.ending.truckX0 }, audio: audio.ctx ? audio.ctx.state + ':' + audio.ctx.currentTime.toFixed(2) + ':step' + audio.nextStep : 'none', stats: G.stats, err: G.lastError || null });
     try { update(dt, now / 1000); R.draw(ctx, G); }
     catch (err) { G.lastError = String(err && err.stack || err); console.error(err); }
     if (G.lastError) { ctx.fillStyle = '#ff5555'; ctx.font = '12px monospace'; ctx.textAlign = 'left'; G.lastError.split(String.fromCharCode(10)).slice(0, 4).forEach((l, i) => ctx.fillText(l, 10, 100 + i * 14)); }

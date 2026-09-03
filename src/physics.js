@@ -63,6 +63,11 @@
   }
   function hitTop(st) { return st.grav === 1 ? st.y - PH : st.y; }
   function hitBot(st) { return st.grav === 1 ? st.y : st.y + PH; }
+  // Top surface of a lock lift (moving platform) at a given beat: lowest at o.phase, highest half a period later
+  function liftTop(o, beat) {
+    const f = 0.5 - 0.5 * Math.cos((2 * Math.PI * (beat - o.phase)) / o.period);
+    return C.GROUND_Y - (o.hLow + (o.hHigh - o.hLow) * f);
+  }
 
   // Advance one fixed step. `held` = jump button currently down.
   function step(st, level, held, dt) {
@@ -76,6 +81,9 @@
     if (m !== st.speedMul) { st.speedMul = m; emit(st, 'zone', { m }); }
     st.x += C.SPEED * m * dt;
     const pl = st.x - HW, pr = st.x + HW;
+    const beatNow = st.t / C.BEAT_SEC;
+    // riding a lift: the feet follow the platform
+    if (st.onGround && st.ground && st.ground.t === 'lift') st.y = liftTop(st.ground, beatNow);
     if (!st.onGround) {
       st.vy += g * C.GRAVITY * dt;
       if (g === 1) st.vy = Math.min(st.vy, C.MAX_FALL); else st.vy = Math.max(st.vy, -C.MAX_FALL);
@@ -110,6 +118,15 @@
             else { die(st, o); return; }
           }
           break;
+        case 'lift': {
+          const top = liftTop(o, beatNow), bot = top + o.thick;
+          if (pr > o.l && pl < o.r && pb > top && pt < bot) {
+            // generous landing: the platform may be rising to meet a falling player
+            if (g === 1 && !st.onGround && st.vy >= 0 && st.prevBot <= top + 14) land(st, top, o);
+            else if (st.ground !== o) { die(st, o); return; }
+          }
+          break;
+        }
         case 'spike': {
           const h = o.hb;
           if (pr > h.l && pl < h.r && pb > h.top && pt < h.bot) { die(st, o); return; }
@@ -167,5 +184,5 @@
     }
   }
 
-  root.TD_PHYSICS = { makeState, step, resetObjects, droneCY, overGround, overCeiling, hitTop, hitBot, speedAt };
+  root.TD_PHYSICS = { makeState, step, resetObjects, droneCY, liftTop, overGround, overCeiling, hitTop, hitBot, speedAt };
 })(typeof window !== 'undefined' ? window : globalThis);

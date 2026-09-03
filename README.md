@@ -1,6 +1,6 @@
 # Trump Dash
 
-A parody rhythm platformer in the style of Geometry Dash, with four levels you pick from the
+A parody rhythm platformer in the style of Geometry Dash, with five levels you pick from the
 main menu.
 
 **Level 1 — GREENLAND (Normal, 112 BPM).** The on-ramp. From Nuuk across the ice past polar
@@ -31,6 +31,14 @@ and a hockey rink are **ice zones**: the run speeds up on them (×1.25 and ×1.3
 clear. It ends at the border sign, where CANADA is stamped **51st STATE** and then **TRUMP**, the
 maple leaf comes down and a TRUMP flag goes up.
 
+**Level 5 — PANAMA CANAL (Expert, 132 BPM, reggaeton).** From the canal entrance past
+crocodiles, **HIGHLY UNFAIR FEE** booths, a **FOOLISH GIFT (1977)** treaty wall cleared with the
+**TAKE IT BACK** pad, an **EXORBITANT FEE** ceiling and container stairs. Four **lock lifts**: barges
+in lock chambers whose water rises on the beat; jump on low, ride up, jump off onto the upper wall.
+The ending is the lock gate: PANAMA CANAL is stamped **TAKEN BACK** and then **TRUMP CANAL**, the fee
+sign flips to "U.S. ships: free, everyone else: $5,000,000", the gates open and a U.S. ship sails
+through. The track is a dembow: kick on every beat, snare on the tresillo, horn stabs on the drops.
+
 Satire. Not affiliated with any person, government or oil company.
 
 ## Play
@@ -50,7 +58,7 @@ returning players never run a mix of old and new modules.
 
 | Key | Action |
 | --- | --- |
-| ← → / 1–4 / click a card | Choose a level on the menu |
+| ← → / 1–5 / click a card | Choose a level on the menu |
 | Space / ↑ / W / Enter / click / tap | Start, and jump (hold to keep jumping, like Geometry Dash) |
 | Esc | Pause |
 | R | Restart from the beginning |
@@ -71,7 +79,9 @@ highest exactly when an on-beat jump passes under them. After a `FLIP` portal ev
 places its objects relative to the ceiling instead of the floor, so a level reads the same
 right side up or upside down. `ICE(startBeat, endBeat, multiplier)` declares a speed zone: the
 builder's beat-to-pixel mapping integrates the multiplier, so obstacles inside the zone are
-still placed on exact beats while the world scrolls faster.
+still placed on exact beats while the world scrolls faster. `LIFT(press, width, low, high, period)`
+places a lock barge that is lowest exactly when the jump pressed on `press` lands on it and
+highest half a period later; the player rides it and jumps off near the top.
 
 The music is generated live with the Web Audio API. `src/audio.js` owns the instruments and the
 16th-note scheduler; each level's file owns its arrangement. Every beat that requires a jump
@@ -89,9 +99,9 @@ the frame rate stutters.
 * `node tools/shoot.js <plan> [outDir]` drives headless Chrome over the DevTools protocol
   (server must be running on port 8765) and captures screenshots. Plans: `menu`, `tour`,
   `ending`, `practice`, `audio` (Venezuela), `tour2`, `ending2` (Hormuz) and `tour3`, `ending3`
-  (Greenland), `tour4`, `ending4` (Canada). Set `PORT=` to run several at once.
+  (Greenland), `tour4`, `ending4` (Canada), `tour5`, `ending5` (Panama). Set `PORT=` to run several at once.
 
-Debug URL parameters: `?level=greenland|venezuela|hormuz|canada`, `?autoplay=1`, `?start=<beat>`, `?noaudio=1`, `?mute=1`,
+Debug URL parameters: `?level=greenland|venezuela|hormuz|canada|panama`, `?autoplay=1`, `?start=<beat>`, `?noaudio=1`, `?mute=1`,
 `?practice=1`, `?debug=1`.
 
 ## Files
@@ -106,9 +116,10 @@ src/levels/greenland.js  Greenland: layout, palettes, music, death messages
 src/levels/venezuela.js  Venezuela: layout, palettes, music, death messages
 src/levels/hormuz.js     Hormuz: layout, palettes, music, death messages
 src/levels/canada.js     The 51st State: layout, palettes, music, death messages
-src/physics.js           deterministic player physics + collisions (spikes, blocks, mines, drones, water, gravity flip, ice speed zones)
+src/levels/panama.js     Panama Canal: layout, palettes, music, death messages
+src/physics.js           deterministic player physics + collisions (spikes, blocks, mines, drones, water, gravity flip, ice speed zones, lock lifts)
 src/audio.js             instruments, scheduler and sound effects
-src/render.js            canvas rendering, HUD, level-select menu, truck / toll-booth / map / border-sign endings
+src/render.js            canvas rendering, HUD, level-select menu, truck / toll-booth / map / border-sign / canal-gate endings
 src/game.js              game loop, input, state machine, ending cutscenes
 tools/verify_level.js    completability + timing-window verifier
 tools/shoot.js           headless screenshot harness

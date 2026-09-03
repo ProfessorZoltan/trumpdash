@@ -139,6 +139,17 @@
         period, phase: press + JO - period / 4, r: 14,
       });
     }
+    // Lock lift: a barge in a water chamber that rises from hLow to hHigh blocks and back every
+    // `period` beats. It is lowest exactly when a jump pressed on `press` lands on it; ride it up and
+    // jump off near the top (press about period*2/3 later) onto a platform at hHigh.
+    function LIFT(press, w, hLow, hHigh, period, skin, label) {
+      const m = mAt(press);
+      const l = bx(press) + 90 * m, r = l + w * B;
+      objs.push({ t: 'lift', l, r, w, thick: 26, hLow: hLow * B, hHigh: hHigh * B, period, phase: press + 0.7, skin: skin || 'barge', label });
+      gaps.push({ l, r });
+      jumpBeats.push(press);
+      curH = hHigh;
+    }
     // Water gap you must jump across (press on `press`); floor only
     function GJ(press, w) {
       const m = mAt(press);
@@ -163,7 +174,7 @@
     function SCENE(beat, kind) { deco.push({ t: 'scene', x: bx(beat), kind }); }
     function GOAL(beat) { endBeat = beat; objs.push({ t: 'goal', x: bx(beat) }); }
 
-    def.build({ S, spikeRaw, blockRaw, slabRaw, OVER, P, DROP, O, PAD, COIN, CEIL, MINE, MS, MINES, DRONE, GJ, GAP, FLIP, FLIPRUN, ICE, SIGN, SCENE, GOAL, bx, mAt, JO, B, G, CY });
+    def.build({ S, spikeRaw, blockRaw, slabRaw, OVER, P, DROP, O, PAD, COIN, CEIL, MINE, MS, MINES, DRONE, GJ, GAP, FLIP, FLIPRUN, ICE, LIFT, SIGN, SCENE, GOAL, bx, mAt, JO, B, G, CY });
     if (flipped) ceilings.push({ l: ceilStart, r: bx(endBeat) + 400 });
     for (const z of zones) { z.x0 = xAtBeat(z.b0); z.x1 = xAtBeat(z.b1); }
 
@@ -172,7 +183,7 @@
     for (const o of objs) {
       switch (o.t) {
         case 'spike': o.xmin = o.x; o.xmax = o.x + B; break;
-        case 'block': case 'pad': o.xmin = o.l; o.xmax = o.r; break;
+        case 'block': case 'pad': case 'lift': o.xmin = o.l; o.xmax = o.r; break;
         case 'orb': case 'mine': case 'drone': case 'portal': o.xmin = o.cx - o.r; o.xmax = o.cx + o.r; break;
         case 'coin': o.xmin = o.cx - 20; o.xmax = o.cx + 20; totalCoins++; break;
         case 'goal': o.xmin = o.x; o.xmax = o.x + 1; break;

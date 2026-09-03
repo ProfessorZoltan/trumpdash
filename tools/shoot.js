@@ -69,6 +69,20 @@ const PLANS = {
     ['b_flagup', (s) => s.ending && s.ending.phase === 'flag' && s.ending.flag2Y >= 1],
     ['b_complete', (s) => s.state === 'complete'],
   ], timeout: 40000 },
+  tour5: { url: '?level=panama&autoplay=1&noaudio=1&mute=1&start=0&debug=1', shots: [
+    ['p_start', (s) => s.beat >= 1.6], ['p_croc', (s) => s.beat >= 20.35], ['p_fee', (s) => s.beat >= 28.4],
+    ['p_lift_low', (s) => s.beat >= 48.75], ['p_lift_high', (s) => s.beat >= 49.9], ['p_lift_off', (s) => s.beat >= 50.4],
+    ['p_treaty', (s) => s.beat >= 64.4], ['p_gift', (s) => s.beat >= 72.4], ['p_feeceil', (s) => s.beat >= 83.9],
+    ['p_ship', (s) => s.beat >= 99.3], ['p_lock3', (s) => s.beat >= 117.4], ['p_lock4', (s) => s.beat >= 129.6],
+    ['p_bridge', (s) => s.beat >= 146.4], ['p_approach', (s) => s.beat >= 157.6], ['p_complete', (s) => s.state === 'complete'],
+  ], timeout: 110000 },
+  ending5: { url: '?level=panama&autoplay=1&noaudio=1&mute=1&start=155&debug=1', shots: [
+    ['n_enter', (s) => s.ending && s.ending.phase === 'enter'],
+    ['n_stamp2', (s) => s.ending && s.ending.phase === 'stamp2' && s.ending.stamp2 >= 1 && s.ending.subSign >= 1],
+    ['n_gate', (s) => s.ending && s.ending.phase === 'gate' && s.ending.gate >= 1],
+    ['n_ship', (s) => s.ending && s.ending.phase === 'ship' && s.ending.ship > 0.45],
+    ['n_complete', (s) => s.state === 'complete'],
+  ], timeout: 40000 },
   menu: { url: '?debug=1', shots: [
     ['menu_1', (s) => s.state === 'menu'],
     ['menu_2', (s) => s.state === 'menu', { key: 'ArrowRight' }],
