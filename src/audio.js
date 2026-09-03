@@ -200,6 +200,21 @@
       };
       mk('sawtooth', f, -8, 0.5); mk('sawtooth', f, 8, 0.5); mk('square', f / 2, 0, 0.22);
     }
+    bell(t, midi, dur, v) {
+      // glassy bell: fundamental + a quiet third partial, fast decay, into the delay
+      const ctx = this.ctx;
+      const f = mtof(midi);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(v * 0.3, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      g.connect(this.duckBus);
+      g.connect(this.delaySend);
+      for (const [mult, vol] of [[1, 1], [3, 0.18], [5.4, 0.05]]) {
+        const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f * mult;
+        const gg = ctx.createGain(); gg.gain.value = vol; o.connect(gg); gg.connect(g);
+        o.start(t); o.stop(t + dur + 0.05);
+      }
+    }
     accent(t, midi, v) {
       // the jump cue: a bright pluck, un-ducked, with delay tail
       const ctx = this.ctx;
@@ -392,6 +407,23 @@
         }
       });
     }
+    sfxWhoosh(dur) {
+      this.sfx((ctx, t) => {
+        const d = dur || 0.6;
+        const src = ctx.createBufferSource(); src.buffer = this.noiseBuf; src.loop = true;
+        const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.2;
+        f.frequency.setValueAtTime(200, t); f.frequency.exponentialRampToValueAtTime(3500, t + d);
+        const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.35, t + d * 0.6); g.gain.linearRampToValueAtTime(0.0001, t + d);
+        src.connect(f); f.connect(g); g.connect(this.sfxBus); src.start(t); src.stop(t + d + 0.05);
+      });
+    }
+    sfxFlip(dir) {
+      this.sfx((ctx, t) => {
+        const from = dir === -1 ? 520 : 1040, to = dir === -1 ? 1040 : 520;
+        this.osc('triangle', from, t, 0.22, this.sfxBus, (g) => { g.setValueAtTime(0.22, t); g.exponentialRampToValueAtTime(0.001, t + 0.22); }).frequency.exponentialRampToValueAtTime(to, t + 0.18);
+        this.osc('sine', from * 1.5, t, 0.22, this.sfxBus, (g) => { g.setValueAtTime(0.1, t); g.exponentialRampToValueAtTime(0.001, t + 0.2); }).frequency.exponentialRampToValueAtTime(to * 1.5, t + 0.18);
+      });
+    }
     sfxCheckpoint() {
       this.sfx((ctx, t) => this.osc('triangle', 990, t, 0.15, this.sfxBus, (g) => { g.setValueAtTime(0.15, t); g.exponentialRampToValueAtTime(0.001, t + 0.15); }));
     }
@@ -408,12 +440,14 @@
         this.padChord(t0 + 1.25, [60, 64, 67, 72], 1.6, 0.14);
       });
     }
-    endingPad(minor) {
+    endingPad(kind) {
       this.sfx((ctx, t) => {
         this.musicBus.gain.cancelScheduledValues(t); this.musicBus.gain.setValueAtTime(1, t);
         this.duckBus.gain.cancelScheduledValues(t); this.duckBus.gain.setValueAtTime(1, t);
-        if (minor) { this.padChord(t, [52, 55, 59, 64], 3.2, 0.12); this.padChord(t + 3.3, [48, 52, 55, 60], 3.2, 0.12); }
-        else { this.padChord(t, [57, 60, 64, 69], 3.2, 0.12); this.padChord(t + 3.3, [53, 57, 60, 65], 3.2, 0.12); }
+        const prog = kind === 'em' ? [[52, 55, 59, 64], [48, 52, 55, 60]]
+          : kind === 'major' ? [[60, 64, 67, 72], [53, 57, 60, 65]]
+          : [[57, 60, 64, 69], [53, 57, 60, 65]];
+        this.padChord(t, prog[0], 3.2, 0.12); this.padChord(t + 3.3, prog[1], 3.2, 0.12);
       });
     }
     engineStart() {

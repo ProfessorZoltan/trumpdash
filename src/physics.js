@@ -1,20 +1,23 @@
 // Trump Dash - deterministic physics (shared by the game and the Node verifier).
+// Gravity can be flipped: st.grav = 1 runs on the floor (GROUND_Y), st.grav = -1 runs along
+// the ceiling (CEIL_Y). st.y is always the player's FEET; the body extends away from the surface.
 (function (root) {
   const C = root.TD_CONST;
   const HW = C.PLAYER_W / 2, PH = C.PLAYER_H;
 
   function makeState(beat) {
     return {
-      t: beat * C.BEAT_SEC, x: beat * C.BEAT_PX, y: C.GROUND_Y, vy: 0,
+      t: beat * C.BEAT_SEC, x: beat * C.BEAT_PX, y: C.GROUND_Y, vy: 0, grav: 1,
       onGround: true, ground: null, airT: 0, rot: 0,
       dead: false, deathBy: null, finished: false, oi: 0, events: [],
+      prevTop: C.GROUND_Y - PH, prevBot: C.GROUND_Y,
     };
   }
 
-  function emit(st, type, obj) { st.events.push({ type, t: st.t, x: st.x, y: st.y, obj }); }
+  function emit(st, type, obj) { st.events.push({ type, t: st.t, x: st.x, y: st.y, grav: st.grav, obj }); }
 
-  function launch(st, vy, type, obj) {
-    st.vy = -vy; st.onGround = false; st.ground = null; st.airT = 0;
+  function launch(st, v, type, obj) {
+    st.vy = -st.grav * v; st.onGround = false; st.ground = null; st.airT = 0;
     emit(st, type, obj);
   }
   function land(st, y, ground) {
@@ -30,7 +33,7 @@
   }
   // Drone centre y at a given beat (shared with the renderer so hitbox and picture agree)
   function droneCY(o, beat) {
-    return o.floorY - (o.hBase + o.amp * Math.sin((2 * Math.PI * (beat - o.phase)) / o.period));
+    return o.floorY - (o.dir || 1) * (o.hBase + o.amp * Math.sin((2 * Math.PI * (beat - o.phase)) / o.period));
   }
   // Is there floor under any part of the hitbox [pl, pr]?
   function overGround(level, pl, pr) {
@@ -42,32 +45,51 @@
     }
     return true;
   }
+  // Is there ceiling above any part of the hitbox [pl, pr]? (ceilings only exist in segments)
+  function overCeiling(level, pl, pr) {
+    const segs = level.ceilings || [];
+    for (let i = 0; i < segs.length; i++) {
+      const s = segs[i];
+      if (s.l > pr) break;
+      if (s.l < pr && s.r > pl) return true;
+    }
+    return false;
+  }
+  function hitTop(st) { return st.grav === 1 ? st.y - PH : st.y; }
+  function hitBot(st) { return st.grav === 1 ? st.y : st.y + PH; }
 
   // Advance one fixed step. `held` = jump button currently down.
   function step(st, level, held, dt) {
     if (st.dead || st.finished) return;
     const objs = level.objs;
+    const g = st.grav;
     if (st.onGround && held) launch(st, C.JUMP_VY, 'jump', null);
 
     st.t += dt;
-    const prevY = st.y;
     st.x = st.t * C.SPEED;
     const pl = st.x - HW, pr = st.x + HW;
     if (!st.onGround) {
-      st.vy = Math.min(st.vy + C.GRAVITY * dt, C.MAX_FALL);
+      st.vy += g * C.GRAVITY * dt;
+      if (g === 1) st.vy = Math.min(st.vy, C.MAX_FALL); else st.vy = Math.max(st.vy, -C.MAX_FALL);
       st.y += st.vy * dt;
       st.airT += dt;
       st.rot += ((Math.PI * 2) / C.AIR_T) * dt;
-      if (st.y >= C.GROUND_Y) {
-        if (overGround(level, pl, pr)) land(st, C.GROUND_Y, null);
-        else if (st.y > C.GROUND_Y + 16) { die(st, { t: 'water' }); return; }
+      if (g === 1) {
+        if (st.y >= C.GROUND_Y) {
+          if (overGround(level, pl, pr)) land(st, C.GROUND_Y, null);
+          else if (st.y > C.GROUND_Y + 16) { die(st, { t: 'water' }); return; }
+        }
+      } else if (st.y <= C.CEIL_Y) {
+        if (overCeiling(level, pl, pr)) land(st, C.CEIL_Y, null);
+        else if (st.y < C.CEIL_Y - 16) { die(st, { t: 'sky' }); return; }
       }
-    } else if (st.ground === null && !overGround(level, pl, pr)) {
-      // ran off the edge of the floor into water
+    } else if (st.ground === null && !(g === 1 ? overGround(level, pl, pr) : overCeiling(level, pl, pr))) {
+      // ran off the edge of the surface
       st.onGround = false; st.airT = 0; st.vy = 0;
     }
 
-    const pb = st.y, pt = st.y - PH;
+    const pt = hitTop(st), pb = hitBot(st);
+    let flipTo = 0;
     while (st.oi < objs.length && objs[st.oi].xmax < pl - 80) st.oi++;
     for (let i = st.oi; i < objs.length; i++) {
       const o = objs[i];
@@ -75,7 +97,8 @@
       switch (o.t) {
         case 'block':
           if (pr > o.l && pl < o.r && pb > o.top && pt < o.bot) {
-            if (!st.onGround && st.vy >= 0 && prevY <= o.top + 0.5) land(st, o.top, o);
+            if (g === 1 && !st.onGround && st.vy >= 0 && st.prevBot <= o.top + 0.5) land(st, o.top, o);
+            else if (g === -1 && !st.onGround && st.vy <= 0 && st.prevTop >= o.bot - 0.5) land(st, o.bot, o);
             else { die(st, o); return; }
           }
           break;
@@ -85,8 +108,9 @@
           break;
         }
         case 'pad':
-          if (pr > o.l && pl < o.r && pb >= o.top - 6 && pb <= o.bot + 14 && (st.onGround || st.vy >= 0)) {
-            launch(st, C.PAD_VY, 'pad', o);
+          if (pr > o.l && pl < o.r) {
+            if (!o.flip && g === 1 && pb >= o.top - 6 && pb <= o.bot + 14 && (st.onGround || st.vy >= 0)) launch(st, C.PAD_VY, 'pad', o);
+            else if (o.flip && g === -1 && pt <= o.bot + 6 && pt >= o.top - 14 && (st.onGround || st.vy <= 0)) launch(st, C.PAD_VY, 'pad', o);
           }
           break;
         case 'orb':
@@ -105,6 +129,9 @@
         case 'coin':
           if (!o.got && circleHit(o.cx, o.cy, 20, pl, pr, pt, pb)) { o.got = true; emit(st, 'coin', o); }
           break;
+        case 'portal':
+          if (o.dir !== g && circleHit(o.cx, o.cy, o.r, pl, pr, pt, pb)) flipTo = o.dir;
+          break;
         case 'goal':
           if (st.x >= o.x) { st.finished = true; emit(st, 'finish', o); return; }
           break;
@@ -114,6 +141,15 @@
     if (st.onGround && st.ground && !(pr > st.ground.l && pl < st.ground.r)) {
       st.onGround = false; st.ground = null; st.airT = 0; st.vy = 0;
     }
+    if (flipTo) {
+      // keep the body where it is on screen; only the feet reference changes
+      st.y = flipTo === -1 ? st.y - PH : st.y + PH;
+      st.grav = flipTo;
+      st.onGround = false; st.ground = null; st.airT = 0;
+      emit(st, 'flip', null);
+    }
+    st.prevTop = hitTop(st);
+    st.prevBot = hitBot(st);
   }
 
   // Reset consumable objects at or after a world x (used for checkpoints/restarts)
@@ -123,5 +159,5 @@
     }
   }
 
-  root.TD_PHYSICS = { makeState, step, resetObjects, droneCY, overGround };
+  root.TD_PHYSICS = { makeState, step, resetObjects, droneCY, overGround, overCeiling, hitTop, hitBot };
 })(typeof window !== 'undefined' ? window : globalThis);

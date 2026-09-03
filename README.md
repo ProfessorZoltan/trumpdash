@@ -1,15 +1,22 @@
 # Trump Dash
 
-A parody rhythm platformer in the style of Geometry Dash, with two levels you pick from the
+A parody rhythm platformer in the style of Geometry Dash, with three levels you pick from the
 main menu.
 
-**Level 1 — VENEZUELA (Hard, 128 BPM).** Run a pixel-art Trump from Washington, D.C. to
+**Level 1 — GREENLAND (Normal, 112 BPM).** The on-ramp. From Nuuk across the ice past polar
+bears, a **NOT FOR SALE** sign, the Danish **Folketing**, and a **NEJ** wall cleared with the
+**PURCHASE OFFER** pad. Then the **FLIP-FLOP** portal turns gravity upside down and you run along
+the underside of the ice, past **Inatsisartut** (Greenland's parliament), before flipping back
+for iceberg alley. It ends at a giant map: **(DENMARK)** gets stamped **U.S.A.**, then **TRUMP**,
+and the island slides across the screen to sit next to Florida.
+
+**Level 2 — VENEZUELA (Hard, 128 BPM).** Run a pixel-art Trump from Washington, D.C. to
 Venezuela's Orinoco oil belt, jumping obstacles like **The Constitution**, **Congress**, the
 **Supreme Court**, **International Law**, the **Free Press** and a **Gag Order** ceiling. Reach the
 tanker truck marked **VENEZUELA**, climb in, watch **U.S.A.** stamp over the name and then
 **TRUMP** stamp over that, and drive away.
 
-**Level 2 — HORMUZ (Insane, 140 BPM).** From a golf round at Mar-a-Lago, through the Pentagon
+**Level 3 — HORMUZ (Insane, 140 BPM).** From a golf round at Mar-a-Lago, through the Pentagon
 and off an aircraft carrier's catapult into the Gulf: water gaps between ship decks, floating
 naval mines, drones bobbing on the beat, the **War Powers Act**, **AUMF**, **Intel Briefing**,
 **Senate/House Hearing** columns, a **UN Security Council** wall (cleared with the **VETO** pad),
@@ -32,7 +39,7 @@ as-is on Vercel or GitHub Pages.
 
 | Key | Action |
 | --- | --- |
-| ← → / 1 / 2 / click a card | Choose a level on the menu |
+| ← → / 1 / 2 / 3 / click a card | Choose a level on the menu |
 | Space / ↑ / W / Enter / click / tap | Start, and jump (hold to keep jumping, like Geometry Dash) |
 | Esc | Pause |
 | R | Restart from the beginning |
@@ -47,9 +54,11 @@ Every level declares its BPM and everything else derives from it in `src/constan
 The distance per beat is always 180 px, so a faster song simply scrolls faster and the
 obstacle geometry is identical between levels. Obstacles are placed in **beats** by the helper
 functions in `src/level.js` (`S` spikes, `MS` mines, `OVER` blocks you jump over, `P` platforms,
-`O` orbs, `GJ` water gaps), positioned so that pressing exactly on the named beat puts the apex
-of the jump over the hazard. Drones bob on a two-beat cycle and are highest exactly when an
-on-beat jump passes under them.
+`O` orbs, `GJ` water gaps, `FLIP` gravity portals), positioned so that pressing exactly on the
+named beat puts the apex of the jump over the hazard. Drones bob on a two-beat cycle and are
+highest exactly when an on-beat jump passes under them. After a `FLIP` portal every helper
+places its objects relative to the ceiling instead of the floor, so a level reads the same
+right side up or upside down.
 
 The music is generated live with the Web Audio API. `src/audio.js` owns the instruments and the
 16th-note scheduler; each level's file owns its arrangement. Every beat that requires a jump
@@ -66,10 +75,10 @@ the frame rate stutters.
   of every jump, and confirms a restart from every practice checkpoint still finishes.
 * `node tools/shoot.js <plan> [outDir]` drives headless Chrome over the DevTools protocol
   (server must be running on port 8765) and captures screenshots. Plans: `menu`, `tour`,
-  `ending`, `practice`, `audio` (Level 1) and `tour2`, `ending2` (Level 2). Set `PORT=` to run
-  several at once.
+  `ending`, `practice`, `audio` (Venezuela), `tour2`, `ending2` (Hormuz) and `tour3`, `ending3`
+  (Greenland). Set `PORT=` to run several at once.
 
-Debug URL parameters: `?level=hormuz`, `?autoplay=1`, `?start=<beat>`, `?noaudio=1`, `?mute=1`,
+Debug URL parameters: `?level=greenland|venezuela|hormuz`, `?autoplay=1`, `?start=<beat>`, `?noaudio=1`, `?mute=1`,
 `?practice=1`, `?debug=1`.
 
 ## Files
@@ -79,12 +88,13 @@ index.html               page shell
 style.css                layout
 src/constants.js         physics constants, setTempo(bpm)
 src/sprites.js           frame table for resources/sprite_sheet.png
-src/level.js             level builder (beats -> objects), checkpoint rule
-src/levels/venezuela.js  Level 1: layout, palettes, music, death messages
-src/levels/hormuz.js     Level 2: layout, palettes, music, death messages
-src/physics.js           deterministic player physics + collisions (spikes, blocks, mines, drones, water)
+src/level.js             level builder (beats -> objects, floor or ceiling), checkpoint rule
+src/levels/greenland.js  Greenland: layout, palettes, music, death messages
+src/levels/venezuela.js  Venezuela: layout, palettes, music, death messages
+src/levels/hormuz.js     Hormuz: layout, palettes, music, death messages
+src/physics.js           deterministic player physics + collisions (spikes, blocks, mines, drones, water, gravity flip)
 src/audio.js             instruments, scheduler and sound effects
-src/render.js            canvas rendering, HUD, level-select menu, truck and toll-booth endings
+src/render.js            canvas rendering, HUD, level-select menu, truck / toll-booth / map endings
 src/game.js              game loop, input, state machine, ending cutscenes
 tools/verify_level.js    completability + timing-window verifier
 tools/shoot.js           headless screenshot harness

@@ -6,6 +6,7 @@
 
   C.BLOCK = 40;                        // one "block" in px
   C.GROUND_Y = 440;                    // world y of the ground surface
+  C.CEIL_Y = 140;                      // world y of the ceiling surface used while gravity is flipped
   C.PLAYER_X = 240;                    // screen x of the player (camera anchor)
   C.PLAYER_W = 30;                     // hitbox
   C.PLAYER_H = 58;

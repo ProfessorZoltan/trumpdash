@@ -4,6 +4,7 @@
 // Run: node tools/verify_level.js [levelId]
 require('../src/constants.js');
 require('../src/level.js');
+require('../src/levels/greenland.js');
 require('../src/levels/venezuela.js');
 require('../src/levels/hormuz.js');
 require('../src/physics.js');
@@ -81,7 +82,7 @@ function verify(def) {
       const ib = Math.floor(st.t / C.BEAT_SEC);
       if (ib > lastChecked) {
         lastChecked = ib;
-        if (ib >= 4 && ib - last >= 8 && st.onGround && st.ground === null && L.checkpointOK(lv, ib)) { cps.push(ib); last = ib; }
+        if (ib >= 4 && ib - last >= 8 && ib <= lv.endBeat - 3 && st.onGround && st.ground === null && st.grav === 1 && L.checkpointOK(lv, ib)) { cps.push(ib); last = ib; }
       }
     }
   }

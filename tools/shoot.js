@@ -11,7 +11,7 @@ const BASE = 'http://localhost:8765/';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const PLANS = {
-  ending: { url: '?autoplay=1&noaudio=1&mute=1&start=155&debug=1', shots: [
+  ending: { url: '?level=venezuela&autoplay=1&noaudio=1&mute=1&start=155&debug=1', shots: [
     ['end_enter', (s) => s.ending && s.ending.phase === 'enter' && s.ending.trumpIn > 0.45],
     ['end_inside', (s) => s.ending && s.ending.phase === 'enter' && s.ending.trumpIn >= 1],
     ['end_stamp1', (s) => s.ending && s.ending.phase === 'stamp1' && s.ending.stamp1 >= 1],
@@ -19,14 +19,29 @@ const PLANS = {
     ['end_drive', (s) => s.ending && s.ending.phase === 'drive' && s.ending.truckX - s.ending.truckX0 > 260],
     ['end_complete', (s) => s.state === 'complete'],
   ], timeout: 30000 },
-  tour: { url: '?autoplay=1&noaudio=1&mute=1&start=0&debug=1', shots: [
+  tour: { url: '?level=venezuela&autoplay=1&noaudio=1&mute=1&start=0&debug=1', shots: [
     ['t_start', (s) => s.beat >= 1.2], ['t_spike', (s) => s.beat >= 8.35], ['t_constitution', (s) => s.beat >= 28.3],
     ['t_orb', (s) => s.beat >= 44.65], ['t_congress', (s) => s.beat >= 50.2], ['t_wall', (s) => s.beat >= 64.3],
     ['t_court', (s) => s.beat >= 77.2], ['t_gag', (s) => s.beat >= 82], ['t_stairs', (s) => s.beat >= 106.5],
     ['t_pad2', (s) => s.beat >= 112.4], ['t_press', (s) => s.beat >= 124.4], ['t_finale', (s) => s.beat >= 150.4],
     ['t_approach', (s) => s.beat >= 157.6], ['t_complete', (s) => s.state === 'complete'],
   ], timeout: 100000 },
-  audio: { url: '?autoplay=1&start=0&debug=1', shots: [['a_mid', (s) => s.beat >= 40], ['a_end', (s) => s.state === 'complete']], timeout: 100000 },
+  audio: { url: '?level=venezuela&autoplay=1&start=0&debug=1', shots: [['a_mid', (s) => s.beat >= 40], ['a_end', (s) => s.state === 'complete']], timeout: 100000 },
+  tour3: { url: '?level=greenland&autoplay=1&noaudio=1&mute=1&start=0&debug=1', shots: [
+    ['g_start', (s) => s.beat >= 1.3], ['g_bear', (s) => s.beat >= 24.35], ['g_sale', (s) => s.beat >= 30.4],
+    ['g_folketing', (s) => s.beat >= 50.3], ['g_nej', (s) => s.beat >= 64.4], ['g_portal', (s) => s.beat >= 66.45],
+    ['g_flipped', (s) => s.beat >= 70.35], ['g_flipped2', (s) => s.beat >= 82.5], ['g_unflip', (s) => s.beat >= 86.55],
+    ['g_icebergs', (s) => s.beat >= 101.4], ['g_flippad', (s) => s.beat >= 116.5], ['g_finale', (s) => s.beat >= 130.4],
+    ['g_approach', (s) => s.beat >= 149.5], ['g_complete', (s) => s.state === 'complete'],
+  ], timeout: 110000 },
+  ending3: { url: '?level=greenland&autoplay=1&noaudio=1&mute=1&start=146&debug=1', shots: [
+    ['m_enter', (s) => s.ending && s.ending.phase === 'enter'],
+    ['m_stamp1', (s) => s.ending && s.ending.phase === 'stamp1' && s.ending.stamp1 >= 1],
+    ['m_stamp2', (s) => s.ending && s.ending.phase === 'stamp2' && s.ending.stamp2 >= 1],
+    ['m_slide', (s) => s.ending && s.ending.phase === 'slide' && s.ending.slide > 0.5],
+    ['m_slid', (s) => s.ending && s.ending.phase === 'slide' && s.ending.slide >= 1],
+    ['m_complete', (s) => s.state === 'complete'],
+  ], timeout: 40000 },
   menu: { url: '?debug=1', shots: [
     ['menu_1', (s) => s.state === 'menu'],
     ['menu_2', (s) => s.state === 'menu', { key: 'ArrowRight' }],
@@ -48,7 +63,7 @@ const PLANS = {
     ['t_complete', (s) => s.state === 'complete'],
   ], timeout: 40000 },
   // practice mode: flags appear, autoplay is switched off so the run dies, then restarts at the last flag
-  practice: { url: '?autoplay=1&noaudio=1&mute=1&start=0&debug=1&practice=1', shots: [
+  practice: { url: '?level=venezuela&autoplay=1&noaudio=1&mute=1&start=0&debug=1&practice=1', shots: [
     ['p_cp1', (s) => s.beat >= 9.3],
     ['p_cp3', (s) => s.beat >= 25.3],
     ['p_off', (s) => s.beat >= 25.6 && s.attempt === 1, { key: 'a' }],
