@@ -442,6 +442,8 @@
     requestAnimationFrame(frame);
   }
   window.addEventListener('error', (ev) => { G.lastError = ev.message + ' @ ' + ev.filename + ':' + ev.lineno; });
+  R.loadImage('greenland', 'resources/greenland_map.png');
+  R.loadImage('florida', 'resources/florida_map.png');
   const img = new Image();
   img.onload = () => {
     R.init(img); G.state = 'menu';

@@ -8,6 +8,20 @@
 
   let sheet = null;
   const runFrames = [];
+  const IMAGES = {}; // extra artwork loaded on demand (maps for the Greenland ending)
+  function loadImage(name, src) {
+    const im = new Image();
+    im.onload = () => { IMAGES[name] = im; };
+    im.src = src;
+  }
+  // draw an image scaled to a given height, centred at (cx, cy)
+  function drawImageFit(ctx, im, cx, cy, h, alpha) {
+    const w = (im.width / im.height) * h;
+    if (alpha != null) { ctx.save(); ctx.globalAlpha = alpha; }
+    ctx.drawImage(im, cx - w / 2, cy - h / 2, w, h);
+    if (alpha != null) ctx.restore();
+    return w;
+  }
 
   function hexToRgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
   function mix(a, b, t) {
@@ -950,15 +964,18 @@
     ctx.closePath();
   }
   function drawIsland(ctx, cx, cy, w, h, e) {
-    polyPath(ctx, GL, cx, cy, w, h);
-    ctx.fillStyle = '#f2f8ff'; ctx.fill();
-    ctx.strokeStyle = '#2b6cc4'; ctx.lineWidth = 3; ctx.stroke();
-    ctx.save(); polyPath(ctx, GL, cx, cy, w, h); ctx.clip();
-    ctx.fillStyle = 'rgba(160,210,240,0.5)'; ctx.fillRect(cx - w * 0.2, cy - h * 0.4, w * 0.45, h * 0.6);
-    ctx.restore();
-    text(ctx, 'GREENLAND', cx, cy - h * 0.05, `bold ${Math.max(10, w * 0.11)}px ${TITLE_FONT}`, '#0a2d6e', 'center');
+    const im = IMAGES.greenland;
+    if (im) {
+      drawImageFit(ctx, im, cx, cy, h);
+      if (h >= 120) text(ctx, 'GREENLAND', cx, cy - h * 0.34, `bold ${Math.max(10, h * 0.09)}px ${TITLE_FONT}`, '#0a2d6e', 'center', 'rgba(255,255,255,0.85)', 4);
+    } else {
+      polyPath(ctx, GL, cx, cy, w, h);
+      ctx.fillStyle = '#f2f8ff'; ctx.fill();
+      ctx.strokeStyle = '#2b6cc4'; ctx.lineWidth = 3; ctx.stroke();
+      text(ctx, 'GREENLAND', cx, cy - h * 0.05, `bold ${Math.max(10, w * 0.11)}px ${TITLE_FONT}`, '#0a2d6e', 'center');
+    }
     if (e) {
-      const s = w / 200;
+      const s = h / 220;
       // ownership tag under the island
       ctx.fillStyle = '#fff'; roundRect(ctx, cx - 44 * s, cy + h * 0.32, 88 * s, 22 * s, 4); ctx.fill();
       ctx.strokeStyle = '#c8102e'; ctx.lineWidth = 2; ctx.stroke();
@@ -983,20 +1000,23 @@
     for (let i = 1; i < 6; i++) { ctx.beginPath(); ctx.moveTo(bx0, by0 + (bh * i) / 6); ctx.lineTo(bx0 + bw, by0 + (bh * i) / 6); ctx.stroke(); }
     for (let i = 1; i < 8; i++) { ctx.beginPath(); ctx.moveTo(bx0 + (bw * i) / 8, by0); ctx.lineTo(bx0 + (bw * i) / 8, by0 + bh); ctx.stroke(); }
     text(ctx, 'ARCTIC ACQUISITIONS', bcx, by0 + 18, `bold 14px ${TITLE_FONT}`, '#6b4a2b', 'center');
-    // Florida marker off to the right
-    const fx = sx + 560, fy = GY - 150;
-    ctx.fillStyle = '#e8f0c8'; polyPath(ctx, FL, fx, fy, 60, 84); ctx.fill(); ctx.strokeStyle = '#2f9e44'; ctx.lineWidth = 2; ctx.stroke();
-    text(ctx, 'FLORIDA', fx, fy + 56, `bold 12px ${TITLE_FONT}`, '#fff', 'center', 'rgba(0,0,0,0.8)', 3);
+    // Florida off to the right
+    const fx = sx + 545, fy = GY - 150;
+    const fl = IMAGES.florida;
+    if (fl) drawImageFit(ctx, fl, fx, fy, 110);
+    else { ctx.fillStyle = '#e8f0c8'; polyPath(ctx, FL, fx, fy, 60, 84); ctx.fill(); ctx.strokeStyle = '#2f9e44'; ctx.lineWidth = 2; ctx.stroke(); }
+    text(ctx, 'FLORIDA', fx, fy + 68, `bold 12px ${TITLE_FONT}`, '#fff', 'center', 'rgba(0,0,0,0.8)', 3);
     const slide = e ? e.slide || 0 : 0;
+    const islandH = 236;
     if (slide > 0) {
       // ghost of where the island used to be
-      ctx.setLineDash([6, 6]); ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 2;
-      polyPath(ctx, GL, bcx, bcy, 200, 220); ctx.stroke(); ctx.setLineDash([]);
-      text(ctx, '(VACANT)', bcx, bcy, `bold 16px ${TITLE_FONT}`, 'rgba(0,0,0,0.45)', 'center');
+      if (IMAGES.greenland) drawImageFit(ctx, IMAGES.greenland, bcx, bcy, islandH, 0.14);
+      else { ctx.setLineDash([6, 6]); ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 2; polyPath(ctx, GL, bcx, bcy, 200, 220); ctx.stroke(); ctx.setLineDash([]); }
+      text(ctx, '(VACANT)', bcx, bcy, `bold 16px ${TITLE_FONT}`, 'rgba(0,0,0,0.5)', 'center', 'rgba(255,255,255,0.7)', 4);
     }
     const ease = slide < 0.5 ? 2 * slide * slide : 1 - Math.pow(-2 * slide + 2, 2) / 2;
-    const cx = bcx + (fx - 70 - bcx) * ease, cy = bcy + (fy - 10 - bcy) * ease, sc = 1 - 0.62 * ease;
-    drawIsland(ctx, cx, cy, 200 * sc, 220 * sc, e);
+    const cx = bcx + (fx - 92 - bcx) * ease, cy = bcy + (fy - 2 - bcy) * ease, sc = 1 - 0.58 * ease;
+    drawIsland(ctx, cx, cy, 200 * sc, islandH * sc, e);
   }
 
   function drawObjects(ctx, G, pal) {
@@ -1196,7 +1216,7 @@
       drawMine(ctx, { cx: (w * 0.14) / s, cy: GY - 46, r: 16 }, (w * 0.14) / s, fakeG);
       if (runFrames[2]) ctx.drawImage(runFrames[2], (w * 0.28) / s, GY - 72);
     } else {
-      drawIsland(ctx, (w * 0.7) / s, GY - 190, 210, 230, null);
+      drawIsland(ctx, (w * 0.72) / s, GY - 112, 190, 220, null);
       drawSpike(ctx, { x: (w * 0.1) / s, base: GY, flip: false, skin: 'bear' }, (w * 0.1) / s, pal);
       drawPortal(ctx, { cx: (w * 0.42) / s, cy: GY - 150, r: 34, dir: -1, label: '' }, (w * 0.42) / s, fakeG);
       if (runFrames[2]) ctx.drawImage(runFrames[2], (w * 0.24) / s, GY - 72);
@@ -1303,5 +1323,5 @@
     ctx.restore();
   }
 
-  root.TD_RENDER = { init, draw, palette, drawPose, menuCardRect };
+  root.TD_RENDER = { init, draw, palette, drawPose, menuCardRect, loadImage };
 })(typeof window !== 'undefined' ? window : globalThis);
