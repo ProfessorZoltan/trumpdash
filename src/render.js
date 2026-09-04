@@ -9,6 +9,7 @@
   let sheet = null;
   const runFrames = [];
   let SCALE = 1;           // device pixels per logical pixel; the coordinate system stays 960x540 (setScale)
+  let TS = 1;              // scale tiles are built at: SCALE, or half of it while compositing the low-detail backdrop
   const TILES = new Map(); // baked parallax layers / static images, rebuilt when the scale changes
   const GRADS = new Map(); // gradients keyed by geometry + stops (they only depend on logical coordinates)
   const IMAGES = {}; // extra artwork loaded on demand (maps for the Greenland ending)
@@ -121,9 +122,9 @@
     scale = Math.max(0.5, Math.min(2, scale || 1));
     const pw = Math.round(W * scale);
     if (Math.abs(scale - SCALE) < 0.005 && canvas.width === pw) return;
-    SCALE = scale;
+    SCALE = scale; TS = scale;
     canvas.width = pw; canvas.height = Math.round(H * scale);
-    TILES.clear();
+    TILES.clear(); BG = null;
     TEXTS.clear();
     buildRunFrames();
   }
@@ -155,26 +156,47 @@
   // wide (three copies, so shapes that cross the seam wrap) and blitted up to three times per frame.
   // `paint(c, ox)` draws the layer with its origin at logical x = ox. Tiles hold device pixels.
   function tile(key, per, y0, h, paint) {
+    key = TS + '|' + key;
     let t = TILES.get(key);
     if (t) return t;
     const cv = document.createElement('canvas');
-    cv.width = Math.max(1, Math.round(per * SCALE));
-    cv.height = Math.max(1, Math.round(h * SCALE));
-    const ty0 = Math.round(y0 * SCALE) / SCALE;
+    cv.width = Math.max(1, Math.round(per * TS));
+    cv.height = Math.max(1, Math.round(h * TS));
+    const ty0 = Math.round(y0 * TS) / TS;
     const c = cv.getContext('2d');
-    c.setTransform(SCALE, 0, 0, SCALE, 0, -ty0 * SCALE);
+    c.setTransform(TS, 0, 0, TS, 0, -ty0 * TS);
     for (let k = -1; k <= 1; k++) paint(c, k * per);
-    t = { cv, per: cv.width / SCALE, y0: ty0, h: cv.height / SCALE };
+    t = { cv, per: cv.width / TS, y0: ty0, h: cv.height / TS };
     TILES.set(key, t);
     return t;
   }
   function blitTile(ctx, t, cam, p) {
     const off = ((-cam * p) % t.per + t.per) % t.per;
     for (let k = -1; k <= 1; k++) {
-      const x = Math.round((off + k * t.per) * SCALE) / SCALE; // device-pixel aligned: no resampling blur
+      const x = Math.round((off + k * t.per) * TS) / TS; // device-pixel aligned: no resampling blur
       if (x + t.per <= 0 || x >= W) continue;
       ctx.drawImage(t.cv, x, t.y0, t.per, t.h);
     }
+  }
+  // Low detail: the backdrop (sky, stars, parallax) is composited into an offscreen canvas at half
+  // density every second frame and blitted in between. On a software-rendered canvas the big blended
+  // layer copies are the single largest cost of a frame; the layers move a pixel or two per frame,
+  // so nobody can see the difference.
+  let BG = null;
+  function drawBackdropLow(ctx, G, pal, backdrop) {
+    const bs = SCALE * 0.5;
+    if (!BG || BG.bs !== bs) {
+      const cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.ceil(W * bs)); cv.height = Math.max(1, Math.ceil(GY * bs));
+      BG = { cv, c: cv.getContext('2d', { alpha: false }), bs, n: 0 };
+    }
+    if ((BG.n++ & 1) === 0 || G.state !== 'playing') {
+      TS = bs;
+      BG.c.setTransform(bs, 0, 0, bs, 0, 0);
+      drawBackground(BG.c, G, pal, backdrop);
+      TS = SCALE;
+    }
+    ctx.drawImage(BG.cv, 0, 0, W, GY);
   }
   // a ridge line: fill from `baseY` up to peaks `top + rnd * amp` above the ground, `n` segments per period
   function ridgeTile(key, per, baseY, top, amp, n, seed, color) {
@@ -2478,7 +2500,7 @@
     if (G.state === 'menu' || G.state === 'loading' || G.state === 'calibrate') {
       const def = G.levels[G.levelIdx] || G.levels[0];
       const pal = paletteOf(def, 'drop');
-      drawBackground(ctx, G, pal, def.backdrop);
+      if (G.lowDetail) drawBackdropLow(ctx, G, pal, def.backdrop); else drawBackground(ctx, G, pal, def.backdrop);
       drawGround(ctx, G, pal, null);
       if (G.state === 'menu') { drawMenu(ctx, G); drawButtons(ctx, G); }
       else if (G.state === 'calibrate') { drawCalibrate(ctx, G); drawButtons(ctx, G); }
@@ -2490,9 +2512,11 @@
     const pal = palette(G.level, G.beat);
     // per-phase timing for the diagnostics overlay (smoothed)
     const parts = G.drawParts || (G.drawParts = { bg: 0, gnd: 0, obj: 0, plr: 0, fx: 0, hud: 0 });
-    const lap = (k, t0) => { const t1 = performance.now(); parts[k] = parts[k] * 0.9 + (t1 - t0) * 0.1; return t1; };
+    const live = G.state === 'playing'; // the overlay's figures freeze while paused, so they can be read
+    const lap = (k, t0) => { const t1 = performance.now(); if (live) parts[k] = parts[k] * 0.9 + (t1 - t0) * 0.1; return t1; };
     let t = performance.now();
-    drawBackground(ctx, G, pal, G.level.def.backdrop); t = lap('bg', t);
+    if (G.lowDetail) drawBackdropLow(ctx, G, pal, G.level.def.backdrop); else drawBackground(ctx, G, pal, G.level.def.backdrop);
+    t = lap('bg', t);
     drawGround(ctx, G, pal, G.level);
     drawCeilings(ctx, G, pal, G.level);
     drawFlightZones(ctx, G, G.level); t = lap('gnd', t);

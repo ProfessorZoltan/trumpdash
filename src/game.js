@@ -739,10 +739,15 @@
     if (avg <= PERF.period * 1.08) return;
     if (G.detail === 'auto' && !G.lowDetail) { G.lowDetail = true; return; }
     if (Q.has('scale')) return;
-    const floor = (G.drawMs || 0) > PERF.period * 1000 * 0.5 ? 0.75 : 1;
-    if (scaleCap > floor) {
-      scaleCap = Math.max(floor, scaleCap - 0.25);
-      // far over budget: one rebuild hitch now beats stuttering until the next death
+    const budget = PERF.period * 1000, drawMs = G.drawMs || 0, cur = canvas.width / C.W;
+    if (drawMs > budget * 0.5) {
+      // drawing is the bottleneck and its cost scales with pixels: jump to the density that fits
+      // in about 60% of the frame (rounded down to a quarter), floor 0.75, and take the one-off
+      // rebuild hitch now rather than stutter on
+      const want = Math.max(0.75, Math.floor(cur * Math.sqrt((budget * 0.6) / drawMs) * 4) / 4);
+      if (want < cur - 0.01) { scaleCap = want; fitCanvas(); }
+    } else if (scaleCap > 1) {
+      scaleCap = Math.max(1, scaleCap - 0.25);
       if (avg > PERF.period * 1.4) fitCanvas(); else pendingScale = true;
     }
   }
@@ -754,6 +759,7 @@
   G.perf = PERF;
   function perfRecord(rawDt, js, draw) {
     const p = PERF;
+    if (G.state !== 'playing' && G.state !== 'menu') return; // frozen while paused, so it can be screenshotted
     p.dts.push(rawDt); if (p.dts.length > 240) p.dts.shift();
     if (p.dts.length >= 30 && (frameCount & 31) === 0) { const s = p.dts.slice().sort((a, b) => a - b); p.period = s[s.length >> 1]; }
     const inst = 1 / Math.max(1e-3, rawDt);
@@ -831,7 +837,7 @@
       update(dt, now / 1000);
       const d0 = performance.now(); R.draw(ctx, G);
       drawThis = performance.now() - d0;
-      G.drawMs = (G.drawMs || 0) * 0.9 + drawThis * 0.1; // smoothed render cost per frame
+      if (G.state !== 'paused') G.drawMs = (G.drawMs || 0) * 0.9 + drawThis * 0.1; // smoothed render cost per frame
       if (dbgEl) trackCam();
     } catch (err) { G.lastError = String(err && err.stack || err); console.error(err); }
     perfRecord(rawDt, performance.now() - f0, drawThis);
