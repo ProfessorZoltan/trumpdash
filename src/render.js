@@ -59,13 +59,38 @@
     ctx.arcTo(x, y, x + w, y, r);
     ctx.closePath();
   }
+  // Text is rendered once per distinct string/font/colour into a small sprite at the current scale and
+  // blitted afterwards. Stroked outline text is among the most expensive things a canvas draws when the
+  // browser rasterises in software, and the HUD, labels and floaters draw dozens of them every frame.
+  const TEXTS = new Map();
+  let mctx = null; // measuring context
+  function textSprite(str, font, color, stroke, lw) {
+    const key = font + '|' + color + '|' + (stroke || '') + '|' + (lw || 4) + '|' + str;
+    let s = TEXTS.get(key);
+    if (s) return s;
+    if (TEXTS.size > 240) TEXTS.clear();
+    if (!mctx) mctx = document.createElement('canvas').getContext('2d');
+    mctx.font = font;
+    const tw = Math.ceil(mctx.measureText(str).width);
+    const m = /(\d+(?:\.\d+)?)px/.exec(font), size = m ? parseFloat(m[1]) : 16;
+    const pad = (stroke ? (lw || 4) : 0) + 2;
+    const w = tw + pad * 2, h = Math.ceil(size * 1.6) + pad * 2;
+    const cv = document.createElement('canvas');
+    cv.width = Math.max(1, Math.ceil(w * SCALE)); cv.height = Math.max(1, Math.ceil(h * SCALE));
+    const c = cv.getContext('2d');
+    c.setTransform(SCALE, 0, 0, SCALE, 0, 0);
+    c.font = font; c.textAlign = 'left'; c.textBaseline = 'middle';
+    if (stroke) { c.lineJoin = 'round'; c.lineWidth = lw || 4; c.strokeStyle = stroke; c.strokeText(str, pad, h / 2); }
+    c.fillStyle = color; c.fillText(str, pad, h / 2);
+    s = { cv, w, h, pad, tw };
+    TEXTS.set(key, s);
+    return s;
+  }
   function text(ctx, str, x, y, font, color, align, stroke, lw) {
-    ctx.font = font;
-    ctx.textAlign = align || 'left';
-    ctx.textBaseline = 'middle';
-    if (stroke) { ctx.lineJoin = 'round'; ctx.lineWidth = lw || 4; ctx.strokeStyle = stroke; ctx.strokeText(str, x, y); }
-    ctx.fillStyle = color;
-    ctx.fillText(str, x, y);
+    str = String(str);
+    const s = textSprite(str, font, color, stroke, lw);
+    const ax = align === 'center' ? x - s.tw / 2 : align === 'right' ? x - s.tw : x;
+    ctx.drawImage(s.cv, ax - s.pad, y - s.h / 2, s.w, s.h);
   }
 
   function init(img) {
@@ -99,6 +124,7 @@
     SCALE = scale;
     canvas.width = pw; canvas.height = Math.round(H * scale);
     TILES.clear();
+    TEXTS.clear();
     buildRunFrames();
   }
   // Creating a gradient every frame is one of the more expensive canvas operations, so they are cached
@@ -2421,11 +2447,12 @@
   // frame diagnostics overlay: fps, frame-time strip (red bars are dropped frames), the last long frames
   function drawPerf(ctx, G) {
     const p = G.perf;
-    const x = 12, y = H - 132, w = 420, h = 120;
+    const x = 12, y = H - 142, w = 470, h = 130;
     ctx.fillStyle = 'rgba(0,0,0,0.72)'; roundRect(ctx, x, y, w, h, 8); ctx.fill();
     const scale = ctx.canvas ? (ctx.canvas.width / W).toFixed(2) : '?';
     text(ctx, `${p.fps.toFixed(0)} fps  display ${(p.period * 1000).toFixed(1)} ms  js ${p.jsMs.toFixed(1)} ms  draw ${(G.drawMs || 0).toFixed(1)} ms  scale ${scale}  detail ${G.lowDetail ? 'low' : 'high'}  dropped ${p.longCount}`, x + 10, y + 14, `11px monospace`, '#fff', 'left');
-    const sx = x + 10, sy = y + 26, sw = w - 20, sh = 28, n = p.dts.length;
+    if (G.drawParts) { const d = G.drawParts; text(ctx, `draw by phase: backdrop ${d.bg.toFixed(1)}  ground ${d.gnd.toFixed(1)}  objects ${d.obj.toFixed(1)}  player ${d.plr.toFixed(1)}  particles ${d.fx.toFixed(1)}  hud ${d.hud.toFixed(1)} ms`, x + 10, y + 27, `11px monospace`, '#ffe9a0', 'left'); }
+    const sx = x + 10, sy = y + 38, sw = w - 20, sh = 24, n = p.dts.length;
     ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(sx, sy, sw, sh);
     for (let i = 0; i < n; i++) {
       const d = p.dts[i], bh = Math.min(sh, (d / (p.period * 3)) * sh);
@@ -2461,19 +2488,23 @@
       return;
     }
     const pal = palette(G.level, G.beat);
-    drawBackground(ctx, G, pal, G.level.def.backdrop);
+    // per-phase timing for the diagnostics overlay (smoothed)
+    const parts = G.drawParts || (G.drawParts = { bg: 0, gnd: 0, obj: 0, plr: 0, fx: 0, hud: 0 });
+    const lap = (k, t0) => { const t1 = performance.now(); parts[k] = parts[k] * 0.9 + (t1 - t0) * 0.1; return t1; };
+    let t = performance.now();
+    drawBackground(ctx, G, pal, G.level.def.backdrop); t = lap('bg', t);
     drawGround(ctx, G, pal, G.level);
     drawCeilings(ctx, G, pal, G.level);
-    drawFlightZones(ctx, G, G.level);
-    drawObjects(ctx, G, pal);
+    drawFlightZones(ctx, G, G.level); t = lap('gnd', t);
+    drawObjects(ctx, G, pal); t = lap('obj', t);
     drawPlayer(ctx, G);
-    drawEndingExtras(ctx, G);
-    drawParticles(ctx, G);
+    drawEndingExtras(ctx, G); t = lap('plr', t);
+    drawParticles(ctx, G); t = lap('fx', t);
     drawHUD(ctx, G, pal);
     if (G.state === 'dead') drawDeath(ctx, G);
     if (G.state === 'paused') drawPaused(ctx, G);
     if (G.state === 'complete') drawComplete(ctx, G);
-    drawButtons(ctx, G);
+    drawButtons(ctx, G); lap('hud', t);
     if (G.perf && G.perf.on) drawPerf(ctx, G);
     ctx.restore();
   }

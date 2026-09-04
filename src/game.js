@@ -104,6 +104,7 @@
     G.deadAt = G.time;
     audio.stopSong(true);
     audio.jetStop();
+    if (pendingScale) { pendingScale = false; fitCanvas(); } // the death pause is a good moment for the rebuild
     const key = deathKey(st.deathBy);
     if (key === 'mine') audio.sfxBoom(); else if (key === 'water') audio.sfxSplash(); else audio.sfxDie();
     G.shake = key === 'mine' ? 22 : 14;
@@ -739,7 +740,11 @@
     if (G.detail === 'auto' && !G.lowDetail) { G.lowDetail = true; return; }
     if (Q.has('scale')) return;
     const floor = (G.drawMs || 0) > PERF.period * 1000 * 0.5 ? 0.75 : 1;
-    if (scaleCap > floor) { scaleCap = Math.max(floor, scaleCap - 0.25); pendingScale = true; }
+    if (scaleCap > floor) {
+      scaleCap = Math.max(floor, scaleCap - 0.25);
+      // far over budget: one rebuild hitch now beats stuttering until the next death
+      if (avg > PERF.period * 1.4) fitCanvas(); else pendingScale = true;
+    }
   }
   // ---------- frame diagnostics (?perf=1, or the K key) ----------
   // Every frame that ran much longer than the display period is recorded with how much of it was
@@ -819,7 +824,7 @@
     frameCount++;
     watchFrameRate(rawDt);
     if ((frameCount & 63) === 0 && (window.devicePixelRatio || 1) !== lastDpr) fitCanvas(); // moved to another monitor / zoomed
-    if (dbgEl) dbgEl.textContent = JSON.stringify({ frames: frameCount, now, time: G.time, state: G.state, level: G.level && G.level.def.id, beat: G.beat, attempt: G.attempt, checkpoints: G.checkpoints.length, practice: G.practice, runPractice: G.runPractice, best: G.best, pbest: G.pbest, wins: G.wins, pwins: G.pwins, autoplay: !!G.autoplay, drawMs: +(G.drawMs || 0).toFixed(2), detail: G.lowDetail ? 'low' : 'high', perf: { fps: +PERF.fps.toFixed(1), jsMs: +PERF.jsMs.toFixed(2), period: +(PERF.period * 1000).toFixed(1), longCount: PERF.longCount, last: PERF.long.length ? PERF.long[PERF.long.length - 1] : null, tickMax: +(audio.tickMax || 0).toFixed(2) }, camJit: +camJit().toFixed(3), scale: +(canvas.width / C.W).toFixed(2), offsetMs: G.offsetMs, audioOffset: +(audio.offset || 0).toFixed(3), calib: G.calib && { phase: G.calib.phase, n: G.calib.taps.length, measured: +G.calib.measured.toFixed(3) }, touch: G.touch, levelIdx: G.levelIdx, fs: G.fsAvailable, fullscreen: G.fullscreen, x: G.st && G.st.x, flying: !!(G.st && G.st.flying), grav: G.st && G.st.grav, speedMul: G.st && G.st.speedMul, gk: G.st && G.st.gk, song: audio.songTime(), ending: G.ending && { phase: G.ending.phase, trumpIn: G.ending.trumpIn, stamp1: G.ending.stamp1, stamp2: G.ending.stamp2, subSign: G.ending.subSign, arm: G.ending.arm, slide: G.ending.slide, flagY: G.ending.flagY, flag2Y: G.ending.flag2Y, gate: G.ending.gate, ship: G.ending.ship, typed: G.ending.typed, plaqueY: G.ending.plaqueY, jetX: G.ending.jetX, door: G.ending.door, ufoX: G.ending.ufoX, tolls: G.ending.tolls, tankers: G.ending.tankers.length, truckX: G.ending.truckX, truckX0: G.ending.truckX0 }, audio: audio.ctx ? audio.ctx.state + ':' + audio.ctx.currentTime.toFixed(2) + ':step' + audio.nextStep : 'none', stats: G.stats, err: G.lastError || null });
+    if (dbgEl) dbgEl.textContent = JSON.stringify({ frames: frameCount, now, time: G.time, state: G.state, level: G.level && G.level.def.id, beat: G.beat, attempt: G.attempt, checkpoints: G.checkpoints.length, practice: G.practice, runPractice: G.runPractice, best: G.best, pbest: G.pbest, wins: G.wins, pwins: G.pwins, autoplay: !!G.autoplay, drawMs: +(G.drawMs || 0).toFixed(2), detail: G.lowDetail ? 'low' : 'high', drawParts: G.drawParts && Object.fromEntries(Object.entries(G.drawParts).map(([k, v]) => [k, +v.toFixed(2)])), perf: { fps: +PERF.fps.toFixed(1), jsMs: +PERF.jsMs.toFixed(2), period: +(PERF.period * 1000).toFixed(1), longCount: PERF.longCount, last: PERF.long.length ? PERF.long[PERF.long.length - 1] : null, tickMax: +(audio.tickMax || 0).toFixed(2) }, camJit: +camJit().toFixed(3), scale: +(canvas.width / C.W).toFixed(2), offsetMs: G.offsetMs, audioOffset: +(audio.offset || 0).toFixed(3), calib: G.calib && { phase: G.calib.phase, n: G.calib.taps.length, measured: +G.calib.measured.toFixed(3) }, touch: G.touch, levelIdx: G.levelIdx, fs: G.fsAvailable, fullscreen: G.fullscreen, x: G.st && G.st.x, flying: !!(G.st && G.st.flying), grav: G.st && G.st.grav, speedMul: G.st && G.st.speedMul, gk: G.st && G.st.gk, song: audio.songTime(), ending: G.ending && { phase: G.ending.phase, trumpIn: G.ending.trumpIn, stamp1: G.ending.stamp1, stamp2: G.ending.stamp2, subSign: G.ending.subSign, arm: G.ending.arm, slide: G.ending.slide, flagY: G.ending.flagY, flag2Y: G.ending.flag2Y, gate: G.ending.gate, ship: G.ending.ship, typed: G.ending.typed, plaqueY: G.ending.plaqueY, jetX: G.ending.jetX, door: G.ending.door, ufoX: G.ending.ufoX, tolls: G.ending.tolls, tankers: G.ending.tankers.length, truckX: G.ending.truckX, truckX0: G.ending.truckX0 }, audio: audio.ctx ? audio.ctx.state + ':' + audio.ctx.currentTime.toFixed(2) + ':step' + audio.nextStep : 'none', stats: G.stats, err: G.lastError || null });
     const f0 = performance.now();
     let drawThis = 0;
     try {
