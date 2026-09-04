@@ -98,6 +98,7 @@
     G.state = 'dead';
     G.deadAt = G.time;
     audio.stopSong(true);
+    audio.jetStop();
     const key = deathKey(st.deathBy);
     if (key === 'mine') audio.sfxBoom(); else if (key === 'water') audio.sfxSplash(); else audio.sfxDie();
     G.shake = key === 'mine' ? 22 : 14;
@@ -117,13 +118,14 @@
     G.camLock = G.level.lengthPx - def.ending.camOffset;
     G.camX = G.camLock;
     audio.stopSong(true);
-    audio.endingPad(type === 'toll' || type === 'canal' || type === 'plaque' ? 'em' : type === 'map' || type === 'sign' ? 'major' : 'am');
+    audio.endingPad(type === 'toll' || type === 'canal' || type === 'plaque' ? 'em' : type === 'map' || type === 'sign' || type === 'jet' ? 'major' : 'am');
     if (type === 'truck') audio.engineStart();
     G.attemptX = null;
     G.ending = {
       type, phase: 'enter', t0: G.time, goalX: st.x, truckX0: st.x, truckX: st.x, wheel: 0,
       stamp1: 0, stamp2: 0, subSign: 0, arm: 0, slide: 0, flagY: 1, flag2Y: 0, gate: 0, ship: 0, plaqueY: -170, typed: 0, ufoX: null, trumpIn: 0.0001, banner: null, bannerT: 0, bannerT0: 0, exhaustT: 0,
       tankers: [], tolls: 0, nextTankerAt: 0,
+      jetX0: st.x, jetX: st.x, jetY0: st.y, jetY: st.y, jetScale: 1, jetRot: st.rot || 0, door: 0, taxiX0: 0,
     };
     recordBest(def.id, 100);
   }
@@ -132,15 +134,16 @@
     recordWin(G.level.def.id);
   }
   function togglePause() {
-    if (G.state === 'playing') { G.state = 'paused'; G.pausedBeat = G.st.t / C.BEAT_SEC; audio.stopSong(true); }
+    if (G.state === 'playing') { G.state = 'paused'; G.pausedBeat = G.st.t / C.BEAT_SEC; audio.stopSong(true); audio.jetStop(); }
     else if (G.state === 'paused') resume();
   }
   function resume() {
     G.state = 'playing';
     G.held = false;
     audio.startSong(G.pausedBeat, 0.4);
+    if (G.st && G.st.flying) audio.jetStart();
   }
-  function quitToMenu() { audio.stopSong(true); audio.engineStop(); G.state = 'menu'; G.st = null; G.ending = null; G.camX = -C.PLAYER_X; }
+  function quitToMenu() { audio.stopSong(true); audio.engineStop(); audio.jetStop(); G.state = 'menu'; G.st = null; G.ending = null; G.camX = -C.PLAYER_X; }
   function restartRun() {
     if (G.state !== 'playing' && G.state !== 'paused' && G.state !== 'dead') return;
     audio.stopSong(true); G.checkpoint = 0; G.checkpoints = []; G.lastCpCheck = -1; G.stats.combo = 0; G.runPractice = G.practice; startAttempt(0);
@@ -236,6 +239,11 @@
         case 'jump': audio.sfxJump(); judge(ev); break;
         case 'orb': audio.sfxOrb(); judge(ev); burst(ev.x, ev.y - 30 * ev.grav, 12, '#ffd400'); break;
         case 'pad': audio.sfxPad(); burst(ev.x, ev.y, 16, '#ffd400'); G.floaters.push({ text: ev.obj.label + '!', x: ev.x, y: up ? ev.y - 110 : ev.y + 130, t0: G.time, dur: 0.9, color: '#ffd400', size: 16 }); break;
+        case 'fly':
+          if (ev.obj.on) { audio.jetStart(); G.floaters.push({ text: "IT'S A GIFT. HOLD TO CLIMB", x: ev.x + 40, y: ev.y - 120, t0: G.time, dur: 1.4, color: '#ffd400', size: 18 }); }
+          else audio.jetStop();
+          break;
+        case 'thrust': audio.sfxWhoosh(0.25); judge(ev); break;
         case 'flip': audio.sfxFlip(ev.grav); burst(ev.x, ev.y, 18, ev.grav === -1 ? '#4fc3ff' : '#ffd400'); G.floaters.push({ text: 'FLIP-FLOP!', x: ev.x, y: ev.y, t0: G.time, dur: 0.8, color: ev.grav === -1 ? '#4fc3ff' : '#ffd400', size: 18 }); break;
         case 'zone':
           if (ev.obj.m > 1) { audio.sfxWhoosh(0.35); G.floaters.push({ text: `ICE  ×${ev.obj.m}`, x: ev.x + 60, y: up ? ev.y - 100 : ev.y + 120, t0: G.time, dur: 0.9, color: '#8fe0ff', size: 18 }); }
@@ -319,6 +327,47 @@
           if (t >= 3.6) { next('done'); completeLevel(); }
           break;
         }
+      }
+      return;
+    }
+    if (e.type === 'jet') {
+      const stopX = e.goalX + 300;
+      switch (e.phase) {
+        case 'enter': { // glide onto the runway while the camera holds; the jet grows as it comes in
+          const p = Math.min(1, t / 1.6), ease = p * p * (3 - 2 * p);
+          e.trumpIn = 1; // he is in the cockpit, not walking in from the left
+          e.jetY = e.jetY0 + (C.GROUND_Y - e.jetY0) * ease;
+          e.jetX = e.jetX0 + t * 150;
+          e.jetScale = 1 + 1.4 * ease;
+          e.jetRot = 0.1 * (1 - ease);
+          if (p >= 1 && !e.hitDown) {
+            e.hitDown = true; audio.sfxClank(); G.shake = 12; audio.jetStop(); banner('TOUCHDOWN');
+            for (let i = 0; i < 16; i++) G.particles.push({ x: e.jetX + (Math.random() - 0.5) * 160, y: C.GROUND_Y, vx: -80 - Math.random() * 140, vy: -20 - Math.random() * 50, life: 0.7, maxLife: 0.7, size: 4 + Math.random() * 6, color: 'rgba(200,200,210,0.6)', gravity: 80 });
+          }
+          if (t >= 1.7) { next('taxi'); e.taxiX0 = e.jetX; }
+          break;
+        }
+        case 'taxi': { // roll to the terminal and stop
+          const p = Math.min(1, t / 1.5);
+          e.jetX = e.taxiX0 + (stopX - e.taxiX0) * (1 - Math.pow(1 - p, 2));
+          if (t >= 1.7) next('stamp1');
+          break;
+        }
+        case 'stamp1':
+          e.stamp1 = Math.min(1, t / 0.32);
+          if (t >= 0.32 && !e.hit1) { e.hit1 = true; audio.sfxStamp(); G.shake = 14; burstInk(e.jetX - 40 * e.jetScale, C.GROUND_Y - 46 * e.jetScale, '#c8102e'); banner('AIR FORCE ONE'); }
+          if (t >= 1.5) next('stamp2');
+          break;
+        case 'stamp2':
+          e.stamp2 = Math.min(1, t / 0.32);
+          if (t >= 0.32 && !e.hit2) { e.hit2 = true; audio.sfxStamp(); G.shake = 20; burstInk(e.jetX - 40 * e.jetScale, C.GROUND_Y - 48 * e.jetScale, '#ffd400'); banner('TRUMP LIBRARY'); }
+          if (t >= 1.7) { next('wave'); audio.sfxWhoosh(0.8); }
+          break;
+        case 'wave':
+          e.door = Math.min(1, t / 0.6);
+          if (t >= 0.7 && !e.hit3) { e.hit3 = true; audio.fanfare(); banner('GIFT ACCEPTED'); G.stats.extra = 1; }
+          if (t >= 3.8) { next('done'); completeLevel(); }
+          break;
       }
       return;
     }
@@ -500,15 +549,16 @@
     if (G.state === 'playing') {
       const st = G.st;
       const target = audio.songTime(nowSec);
-      let steps = 0;
+      let steps = 0, heldNow = G.held;
       while (st.t + C.DT <= target && steps < 4000) {
         let held = G.held;
         if (G.autoplay) { // debug: press exactly on every jump beat for 60 ms
           const b = st.t / C.BEAT_SEC, ib = Math.floor(b + 0.0001);
           let cand = null;
           if (b >= ib + 0.5 && G.level.jumpSet.has(ib + 0.5)) cand = ib + 0.5; else if (b < ib + 0.5 && G.level.jumpSet.has(ib)) cand = ib;
-          held = cand != null && (b - cand) * C.BEAT_SEC < 0.06;
+          held = (cand != null && (b - cand) * C.BEAT_SEC < 0.06) || G.level.holds.some((h) => b >= h[0] && b < h[1]);
         }
+        heldNow = held;
         PHYS.step(st, G.level, held, C.DT);
         steps++;
         if (st.dead || st.finished) break;
@@ -522,6 +572,10 @@
       G.viewY = st.onGround ? st.y : st.y + st.vy * lead;
       if (st.gk > 1 && !st.dead && Math.random() < 0.35) { // low gravity: drifting motes around the player
         G.particles.push({ x: st.x + (Math.random() - 0.5) * 80, y: st.y - (st.grav === 1 ? 20 : -20) - Math.random() * 60 * st.grav, vx: (Math.random() - 0.5) * 30, vy: -18 * st.grav, life: 0.9, maxLife: 0.9, size: 1.5 + Math.random() * 1.5, color: 'rgba(220,200,255,0.8)', gravity: 0 });
+      }
+      if (st.flying && !st.dead) { // thrust: engine note and exhaust
+        audio.jetThrust(heldNow);
+        if (heldNow && Math.random() < 0.9) G.particles.push({ x: st.x - 44, y: st.y - 12 + (Math.random() - 0.5) * 10, vx: -260 - Math.random() * 140, vy: (Math.random() - 0.5) * 50, life: 0.35, maxLife: 0.35, size: 3 + Math.random() * 3, color: pick(['#ffd27f', '#ff9d3f', '#ffffff']), gravity: 0 });
       }
       if (st.speedMul > 1 && st.onGround && !st.dead) { // ice spray behind the feet
         G.particles.push({ x: st.x - 12 - Math.random() * 10, y: st.y - (st.grav === 1 ? 2 : -2), vx: -120 - Math.random() * 120, vy: (-30 - Math.random() * 60) * st.grav, life: 0.3, maxLife: 0.3, size: 1.5 + Math.random() * 2, color: 'rgba(230,248,255,0.9)', gravity: 500 * st.grav });
@@ -717,7 +771,7 @@
     frameCount++;
     watchFrameRate(rawDt);
     if ((frameCount & 63) === 0 && (window.devicePixelRatio || 1) !== lastDpr) fitCanvas(); // moved to another monitor / zoomed
-    if (dbgEl) dbgEl.textContent = JSON.stringify({ frames: frameCount, now, time: G.time, state: G.state, level: G.level && G.level.def.id, beat: G.beat, attempt: G.attempt, checkpoints: G.checkpoints.length, practice: G.practice, runPractice: G.runPractice, best: G.best, pbest: G.pbest, wins: G.wins, pwins: G.pwins, autoplay: !!G.autoplay, drawMs: +(G.drawMs || 0).toFixed(2), camJit: +camJit().toFixed(3), scale: +(canvas.width / C.W).toFixed(2), offsetMs: G.offsetMs, audioOffset: +(audio.offset || 0).toFixed(3), calib: G.calib && { phase: G.calib.phase, n: G.calib.taps.length, measured: +G.calib.measured.toFixed(3) }, touch: G.touch, levelIdx: G.levelIdx, fs: G.fsAvailable, fullscreen: G.fullscreen, x: G.st && G.st.x, grav: G.st && G.st.grav, speedMul: G.st && G.st.speedMul, gk: G.st && G.st.gk, song: audio.songTime(), ending: G.ending && { phase: G.ending.phase, trumpIn: G.ending.trumpIn, stamp1: G.ending.stamp1, stamp2: G.ending.stamp2, subSign: G.ending.subSign, arm: G.ending.arm, slide: G.ending.slide, flagY: G.ending.flagY, flag2Y: G.ending.flag2Y, gate: G.ending.gate, ship: G.ending.ship, typed: G.ending.typed, plaqueY: G.ending.plaqueY, ufoX: G.ending.ufoX, tolls: G.ending.tolls, tankers: G.ending.tankers.length, truckX: G.ending.truckX, truckX0: G.ending.truckX0 }, audio: audio.ctx ? audio.ctx.state + ':' + audio.ctx.currentTime.toFixed(2) + ':step' + audio.nextStep : 'none', stats: G.stats, err: G.lastError || null });
+    if (dbgEl) dbgEl.textContent = JSON.stringify({ frames: frameCount, now, time: G.time, state: G.state, level: G.level && G.level.def.id, beat: G.beat, attempt: G.attempt, checkpoints: G.checkpoints.length, practice: G.practice, runPractice: G.runPractice, best: G.best, pbest: G.pbest, wins: G.wins, pwins: G.pwins, autoplay: !!G.autoplay, drawMs: +(G.drawMs || 0).toFixed(2), camJit: +camJit().toFixed(3), scale: +(canvas.width / C.W).toFixed(2), offsetMs: G.offsetMs, audioOffset: +(audio.offset || 0).toFixed(3), calib: G.calib && { phase: G.calib.phase, n: G.calib.taps.length, measured: +G.calib.measured.toFixed(3) }, touch: G.touch, levelIdx: G.levelIdx, fs: G.fsAvailable, fullscreen: G.fullscreen, x: G.st && G.st.x, flying: !!(G.st && G.st.flying), grav: G.st && G.st.grav, speedMul: G.st && G.st.speedMul, gk: G.st && G.st.gk, song: audio.songTime(), ending: G.ending && { phase: G.ending.phase, trumpIn: G.ending.trumpIn, stamp1: G.ending.stamp1, stamp2: G.ending.stamp2, subSign: G.ending.subSign, arm: G.ending.arm, slide: G.ending.slide, flagY: G.ending.flagY, flag2Y: G.ending.flag2Y, gate: G.ending.gate, ship: G.ending.ship, typed: G.ending.typed, plaqueY: G.ending.plaqueY, jetX: G.ending.jetX, door: G.ending.door, ufoX: G.ending.ufoX, tolls: G.ending.tolls, tankers: G.ending.tankers.length, truckX: G.ending.truckX, truckX0: G.ending.truckX0 }, audio: audio.ctx ? audio.ctx.state + ':' + audio.ctx.currentTime.toFixed(2) + ':step' + audio.nextStep : 'none', stats: G.stats, err: G.lastError || null });
     try {
       update(dt, now / 1000);
       const d0 = performance.now(); R.draw(ctx, G);

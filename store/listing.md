@@ -34,10 +34,10 @@ a title without the name is the safer choice if the listing should survive a com
 **Full description** (4000 characters max)
 
     A rhythm platformer parody in the style of Geometry Dash. Tap on the beat to jump, hold to keep
-    jumping, and steer a pixel-art Trump through six satirical levels, each with its own procedural
+    jumping, and steer a pixel-art Trump through seven satirical levels, each with its own procedural
     soundtrack that tells you exactly when to press.
 
-    SIX LEVELS
+    SEVEN LEVELS
     • GREENLAND (Normal): across the ice past polar bears and a NOT FOR SALE sign, through the
       FLIP-FLOP portal that turns gravity upside down, to a map where the island gets stamped and
       relocated next to Florida.
@@ -51,6 +51,8 @@ a title without the name is the safer choice if the listing should survive a com
       that opens for one flag only.
     • THE MOON (Extreme): low gravity, gravity flips, asteroid belts and a UFO, ending at a plaque
       that gets engraved line by line.
+    • QATARI JET (Expert): through Doha on foot, then board the gift and FLY it to Washington.
+      Hold to climb, release to dive, through towers, storm clouds and the Emoluments Clause.
 
     HOW IT PLAYS
     • One control: tap to jump, hold to keep jumping.

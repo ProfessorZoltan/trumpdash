@@ -8,7 +8,7 @@
   function makeState(beat, level) {
     return {
       t: beat * C.BEAT_SEC, x: level && level.xAtBeat ? level.xAtBeat(beat) : beat * C.BEAT_PX, y: C.GROUND_Y, vy: 0, grav: 1,
-      onGround: true, ground: null, airT: 0, rot: 0, speedMul: 1, gk: 1,
+      onGround: true, ground: null, airT: 0, rot: 0, speedMul: 1, gk: 1, flying: false, heldPrev: false,
       dead: false, deathBy: null, finished: false, oi: 0, events: [],
       prevTop: C.GROUND_Y - PH, prevBot: C.GROUND_Y,
     };
@@ -67,8 +67,14 @@
     }
     return false;
   }
-  function hitTop(st) { return st.grav === 1 ? st.y - PH : st.y; }
-  function hitBot(st) { return st.grav === 1 ? st.y : st.y + PH; }
+  // Inside a flight zone the player is the jet (smaller, wider hitbox; underside at st.y)
+  function flyAt(level, x) {
+    const zs = level.fly;
+    if (zs) for (let i = 0; i < zs.length; i++) { const z = zs[i]; if (x < z.x0) break; if (x <= z.x1) return true; }
+    return false;
+  }
+  function hitTop(st) { const ph = st.flying ? C.JET_H : PH; return st.grav === 1 ? st.y - ph : st.y; }
+  function hitBot(st) { const ph = st.flying ? C.JET_H : PH; return st.grav === 1 ? st.y : st.y + ph; }
   // Top surface of a lock lift (moving platform) at a given beat: lowest at o.phase, highest half a period later
   function liftTop(o, beat) {
     const f = 0.5 - 0.5 * Math.cos((2 * Math.PI * (beat - o.phase)) / o.period);
@@ -80,19 +86,30 @@
     if (st.dead || st.finished) return;
     const objs = level.objs;
     const g = st.grav;
-    if (st.onGround && held) launch(st, C.JUMP_VY, 'jump', null);
+    if (!st.flying && st.onGround && held) launch(st, C.JUMP_VY, 'jump', null);
 
     st.t += dt;
     const m = speedAt(level, st.x);
     if (m !== st.speedMul) { st.speedMul = m; emit(st, 'zone', { m }); }
     st.x += C.SPEED * m * dt;
-    const pl = st.x - HW, pr = st.x + HW;
+    const fz = flyAt(level, st.x);
+    if (fz !== st.flying) { // boarding the jet, or leaving it
+      st.flying = fz; st.onGround = false; st.ground = null; st.airT = 0; st.rot = 0;
+      if (fz) st.vy = 0;
+      emit(st, 'fly', { on: fz });
+    }
+    const hw = st.flying ? C.JET_W / 2 : HW;
+    const pl = st.x - hw, pr = st.x + hw;
     const beatNow = st.t / C.BEAT_SEC;
     // riding a lift: the feet follow the platform
     if (st.onGround && st.ground && st.ground.t === 'lift') st.y = liftTop(st.ground, beatNow);
     const k = gravAt(level, st.x);
     if (k !== st.gk) { st.gk = k; emit(st, 'lowg', { k }); }
-    if (!st.onGround) {
+    if (st.flying) {
+      C.flyStep(st, held, dt);
+      st.rot = (st.vy / C.FLY_VMAX) * 0.35; // nose tilt
+      if (held && !st.heldPrev) emit(st, 'thrust', null);
+    } else if (!st.onGround) {
       st.vy += (g * C.GRAVITY / k) * dt;
       if (g === 1) st.vy = Math.min(st.vy, C.MAX_FALL); else st.vy = Math.max(st.vy, -C.MAX_FALL);
       st.y += st.vy * dt;
@@ -121,6 +138,7 @@
       switch (o.t) {
         case 'block':
           if (pr > o.l && pl < o.r && pb > o.top && pt < o.bot) {
+            if (st.flying) { die(st, o); return; }
             if (g === 1 && !st.onGround && st.vy >= 0 && st.prevBot <= o.top + 0.5) land(st, o.top, o);
             else if (g === -1 && !st.onGround && st.vy <= 0 && st.prevTop >= o.bot - 0.5) land(st, o.bot, o);
             else { die(st, o); return; }
@@ -129,6 +147,7 @@
         case 'lift': {
           const top = liftTop(o, beatNow), bot = top + o.thick;
           if (pr > o.l && pl < o.r && pb > top && pt < bot) {
+            if (st.flying) { die(st, o); return; }
             // generous landing: the platform may be rising to meet a falling player
             if (g === 1 && !st.onGround && st.vy >= 0 && st.prevBot <= top + 14) land(st, top, o);
             else if (st.ground !== o) { die(st, o); return; }
@@ -141,13 +160,13 @@
           break;
         }
         case 'pad':
-          if (pr > o.l && pl < o.r) {
+          if (!st.flying && pr > o.l && pl < o.r) {
             if (!o.flip && g === 1 && pb >= o.top - 6 && pb <= o.bot + 14 && (st.onGround || st.vy >= 0)) launch(st, C.PAD_VY, 'pad', o);
             else if (o.flip && g === -1 && pt <= o.bot + 6 && pt >= o.top - 14 && (st.onGround || st.vy <= 0)) launch(st, C.PAD_VY, 'pad', o);
           }
           break;
         case 'orb':
-          if (!o.used && held && circleHit(o.cx, o.cy, o.r, pl, pr, pt, pb)) {
+          if (!st.flying && !o.used && held && circleHit(o.cx, o.cy, o.r, pl, pr, pt, pb)) {
             o.used = true; launch(st, C.ORB_VY, 'orb', o);
           }
           break;
@@ -163,7 +182,7 @@
           if (!o.got && circleHit(o.cx, o.cy, 20, pl, pr, pt, pb)) { o.got = true; emit(st, 'coin', o); }
           break;
         case 'portal':
-          if (o.dir !== g && circleHit(o.cx, o.cy, o.r, pl, pr, pt, pb)) flipTo = o.dir;
+          if (!st.flying && o.dir !== g && circleHit(o.cx, o.cy, o.r, pl, pr, pt, pb)) flipTo = o.dir;
           break;
         case 'goal':
           if (st.x >= o.x) { st.finished = true; emit(st, 'finish', o); return; }
@@ -181,6 +200,7 @@
       st.onGround = false; st.ground = null; st.airT = 0;
       emit(st, 'flip', null);
     }
+    st.heldPrev = held;
     st.prevTop = hitTop(st);
     st.prevBot = hitBot(st);
   }

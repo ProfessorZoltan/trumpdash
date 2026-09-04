@@ -185,7 +185,35 @@
     else if (backdrop === 'canada') drawCanadaBackdrop(ctx, G, cam);
     else if (backdrop === 'tropics') drawTropicsBackdrop(ctx, G, cam);
     else if (backdrop === 'space') drawSpaceBackdrop(ctx, G, cam);
+    else if (backdrop === 'desert') drawDesertBackdrop(ctx, G, cam);
     else drawCityBackdrop(ctx, cam);
+  }
+  function drawDesertBackdrop(ctx, G, cam) {
+    // a low sun
+    const sun = tile('desert-sun', 200, 0, 200, (c, ox) => {
+      if (ox !== 0) return;
+      const g = c.createRadialGradient(100, 100, 30, 100, 100, 100);
+      g.addColorStop(0, 'rgba(255,220,120,0.9)'); g.addColorStop(0.35, 'rgba(255,190,80,0.55)'); g.addColorStop(1, 'rgba(255,170,60,0)');
+      c.fillStyle = g; c.beginPath(); c.arc(100, 100, 100, 0, Math.PI * 2); c.fill();
+      c.fillStyle = '#ffe9a8'; c.beginPath(); c.arc(100, 100, 34, 0, Math.PI * 2); c.fill();
+    });
+    ctx.drawImage(sun.cv, W - 340 - ((cam * 0.01) % 40), 30, sun.per, sun.h);
+    // Doha skyline in silhouette: glass towers, a dome, a minaret
+    const sky = tile('desert-skyline', 1800, GY - 270, 270, (c, ox) => {
+      const towers = [[40, 70, 190], [130, 50, 150], [200, 60, 230], [290, 44, 120], [360, 80, 200], [470, 46, 170], [540, 60, 250], [630, 50, 140], [720, 70, 210], [830, 46, 160], [900, 60, 190], [1000, 80, 240], [1110, 50, 130], [1370, 70, 150], [1470, 56, 200], [1560, 60, 120], [1650, 50, 170], [1730, 44, 140]];
+      for (const [x, w, h] of towers) {
+        c.fillStyle = 'rgba(30,40,70,0.5)'; c.fillRect(ox + x, GY - h, w, h);
+        c.fillStyle = 'rgba(255,220,150,0.35)';
+        for (let wy = GY - h + 8; wy < GY - 8; wy += 12) for (let wx = ox + x + 5; wx < ox + x + w - 6; wx += 10) if (rnd(wx * 0.3 + wy * 0.7) > 0.5) c.fillRect(wx, wy, 4, 6);
+      }
+      c.fillStyle = 'rgba(30,40,70,0.5)';
+      c.beginPath(); c.arc(ox + 1240, GY - 40, 40, Math.PI, 0); c.fill(); c.fillRect(ox + 1200, GY - 40, 80, 40);
+      c.fillRect(ox + 1300, GY - 180, 10, 180); c.beginPath(); c.moveTo(ox + 1295, GY - 180); c.lineTo(ox + 1305, GY - 205); c.lineTo(ox + 1315, GY - 180); c.fill();
+    });
+    blitTile(ctx, sky, cam, 0.12);
+    // dunes, two layers
+    blitTile(ctx, ridgeTile('desert-dunes-far', 1700, GY - 40, 60, 60, 10, [5, 21], 'rgba(230,170,90,0.55)'), cam, 0.25);
+    blitTile(ctx, ridgeTile('desert-dunes-near', 1200, GY, 20, 50, 7, [9, 33], 'rgba(200,130,60,0.7)'), cam, 0.45);
   }
   function paintEarth(c, ex, ey, er) {
     const glow = c.createRadialGradient(ex, ey, er, ex, ey, er * 1.8);
@@ -430,6 +458,22 @@
       }
       ctx.fillStyle = 'rgba(0,0,0,0.25)';
       for (let x = off - 60; x < W; x += 30) { ctx.beginPath(); ctx.ellipse(x + 8, GY + 8, 5, 3, 0, 0, Math.PI * 2); ctx.fill(); }
+    } else if (style === 'sand') {
+      ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(0, GY, W, 4);
+      ctx.strokeStyle = 'rgba(120,80,30,0.35)'; ctx.lineWidth = 1.5;
+      for (let x = off - 80; x < W; x += 40) {
+        ctx.beginPath(); ctx.moveTo(x, GY + 24); ctx.quadraticCurveTo(x + 20, GY + 14, x + 40, GY + 24); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x + 20, GY + 60); ctx.quadraticCurveTo(x + 40, GY + 50, x + 60, GY + 60); ctx.stroke();
+      }
+    } else if (style === 'ocean') {
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 2;
+      for (let row = 0; row < 4; row++) {
+        ctx.beginPath();
+        const y0 = GY + 12 + row * 24;
+        for (let x = 0; x <= W; x += 8) ctx.lineTo(x, y0 + Math.sin((x + cam * 0.5) * 0.04 + G.time * 2.5 + row) * 4);
+        ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(0, GY, W, 3);
     } else if (style === 'ice') {
       ctx.strokeStyle = 'rgba(80,140,200,0.35)'; ctx.lineWidth = 1.5;
       for (let i = 0; i < 12; i++) {
@@ -509,6 +553,27 @@
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
         ctx.fillRect(l - 3, GY - 4, 3, 30); ctx.fillRect(r, GY - 4, 3, 30);
       }
+    }
+  }
+  // flight zones: a cloud deck marks the altitude ceiling, and the zone's edges are marked
+  function drawFlightZones(ctx, G, level) {
+    if (!level || !level.fly || !level.fly.length) return;
+    const cam = G.camX;
+    for (const z of level.fly) {
+      const l = z.x0 - cam, r = z.x1 - cam;
+      if (r < 0 || l > W) continue;
+      ctx.save(); ctx.beginPath(); ctx.rect(Math.max(-1, l), 0, Math.min(W + 1, r) - Math.max(-1, l), CY + 30); ctx.clip();
+      ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(l, 0, r - l, CY - 8);
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      const start = Math.floor((Math.max(l, -140) + cam) / 90) * 90 - cam;
+      for (let x = start; x < Math.min(r, W) + 140; x += 90) {
+        const i = Math.round((x + cam) / 90);
+        ctx.beginPath(); ctx.ellipse(x, CY - 14 + rnd(i) * 12, 58 + rnd(i + 3) * 30, 16 + rnd(i + 5) * 10, 0, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1; ctx.setLineDash([8, 10]);
+      ctx.beginPath(); ctx.moveTo(Math.max(0, l), CY); ctx.lineTo(Math.min(W, r), CY); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(255,212,0,0.6)'; ctx.fillRect(l - 2, 0, 3, GY); ctx.fillRect(r, 0, 3, GY);
     }
   }
   // ice shelf along the top of the screen wherever gravity can be flipped
@@ -687,6 +752,36 @@
         ctx.fillStyle = '#1b2a4a'; ctx.fillRect(sx + 90, GY - 110, 4, 110); ctx.fillStyle = '#2b6cc4'; ctx.fillRect(sx + 60, GY - 130, 64, 22);
         ctx.fillStyle = 'rgba(255,255,255,0.5)'; for (let i = 0; i < 4; i++) ctx.fillRect(sx + 62 + i * 16, GY - 128, 12, 18);
         text(ctx, 'OUTPOST 1', sx, GY - 78, `bold 11px ${TITLE_FONT}`, '#1b2a4a', 'center');
+        break;
+      }
+      case 'doha': { // waterfront: stacked museum blocks, palms
+        ctx.fillStyle = '#e8dcc4'; ctx.fillRect(sx - 120, GY - 110, 90, 110); ctx.fillRect(sx - 90, GY - 150, 60, 40); ctx.fillRect(sx - 70, GY - 180, 30, 30);
+        ctx.fillStyle = 'rgba(0,0,0,0.12)'; ctx.fillRect(sx - 120, GY - 110, 90, 6); ctx.fillRect(sx - 90, GY - 150, 60, 6);
+        palm(ctx, sx + 10, GY - 2, 120); palm(ctx, sx + 60, GY - 2, 90);
+        text(ctx, 'DOHA', sx - 75, GY - 60, `bold 22px ${TITLE_FONT}`, 'rgba(60,40,20,0.5)', 'center');
+        break;
+      }
+      case 'palace': { // domes and arches
+        ctx.fillStyle = '#f1e7d0'; ctx.fillRect(sx - 160, GY - 120, 320, 120);
+        ctx.fillStyle = '#d8c9a5';
+        for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.arc(sx - 120 + i * 60, GY - 60, 18, Math.PI, 0); ctx.fill(); ctx.fillRect(sx - 138 + i * 60, GY - 60, 36, 60); }
+        ctx.fillStyle = '#c9a227'; ctx.beginPath(); ctx.arc(sx, GY - 120, 60, Math.PI, 0); ctx.fill();
+        ctx.fillStyle = '#8d1b3d'; ctx.beginPath(); ctx.arc(sx - 130, GY - 120, 26, Math.PI, 0); ctx.fill(); ctx.beginPath(); ctx.arc(sx + 130, GY - 120, 26, Math.PI, 0); ctx.fill();
+        ctx.fillStyle = '#ffd400'; ctx.fillRect(sx - 3, GY - 200, 6, 22); ctx.beginPath(); ctx.arc(sx, GY - 204, 6, 0, Math.PI * 2); ctx.fill();
+        text(ctx, 'AMIRI DIWAN', sx, GY - 96, `bold 14px ${UI_FONT}`, 'rgba(90,60,20,0.7)', 'center');
+        break;
+      }
+      case 'atlantic': { // a tanker far below the flight path
+        drawTanker(ctx, sx, GY - 6, 0.55, '#3a4a6a', G, 1, null, false);
+        break;
+      }
+      case 'dc': { // the Capitol and the Monument
+        ctx.fillStyle = 'rgba(240,240,245,0.85)';
+        ctx.fillRect(sx - 160, GY - 70, 320, 70); ctx.fillRect(sx - 60, GY - 120, 120, 50);
+        ctx.beginPath(); ctx.arc(sx, GY - 120, 50, Math.PI, 0); ctx.fill(); ctx.fillRect(sx - 4, GY - 190, 8, 24);
+        ctx.fillStyle = 'rgba(0,0,0,0.12)'; for (let i = 0; i < 12; i++) ctx.fillRect(sx - 150 + i * 26, GY - 62, 6, 62);
+        ctx.fillStyle = 'rgba(240,240,245,0.85)'; ctx.fillRect(sx + 300, GY - 230, 16, 230);
+        ctx.beginPath(); ctx.moveTo(sx + 300, GY - 230); ctx.lineTo(sx + 308, GY - 250); ctx.lineTo(sx + 316, GY - 230); ctx.fill();
         break;
       }
       case 'canalsign': {
@@ -1235,6 +1330,71 @@
         ctx.strokeStyle = '#000'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
         break;
       }
+      case 'tower': { // a Doha glass tower
+        ctx.fillStyle = '#4c7fb8'; ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(x + 6, y, 6, h);
+        ctx.fillStyle = 'rgba(0,0,0,0.25)'; for (let wy = y + 6; wy < y + h - 4; wy += 10) ctx.fillRect(x + 3, wy, w - 6, 2);
+        ctx.fillStyle = '#2a4f7e'; ctx.fillRect(x - 3, y, w + 6, 6);
+        ctx.strokeStyle = '#1b2a4a'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
+        break;
+      }
+      case 'minaret': {
+        ctx.fillStyle = '#e8dcc4'; ctx.fillRect(x + 4, y, w - 8, h);
+        ctx.fillStyle = '#c9b48a'; ctx.fillRect(x, y, w, 8); ctx.fillRect(x, y + h * 0.5, w, 6);
+        ctx.fillStyle = '#8d1b3d'; ctx.beginPath(); ctx.moveTo(x - 2, y); ctx.lineTo(x + w / 2, y - 18); ctx.lineTo(x + w + 2, y); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 2; ctx.strokeRect(x + 4, y, w - 8, h);
+        break;
+      }
+      case 'cloud': { // a storm cloud hanging from the sky
+        ctx.fillStyle = '#4a4f66'; ctx.fillRect(x + 4, y, w - 8, h);
+        ctx.fillStyle = '#5c617a';
+        for (let cy = y + 10; cy < y + h; cy += 26) { ctx.beginPath(); ctx.ellipse(x + w / 2, cy, w * 0.75, 14, 0, 0, Math.PI * 2); ctx.fill(); }
+        ctx.fillStyle = '#3a3e52'; ctx.beginPath(); ctx.ellipse(x + w / 2, y + h - 4, w * 0.8, 12, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#ffe97a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + w / 2 + 4, y + h - 2); ctx.lineTo(x + w / 2 - 4, y + h + 10); ctx.lineTo(x + w / 2 + 2, y + h + 10); ctx.lineTo(x + w / 2 - 6, y + h + 24); ctx.stroke();
+        break;
+      }
+      case 'emoluments': { // a hanging clause of the Constitution
+        parchment(ctx, x - 6, y, w + 12, h, '#f3e6c4', '#8a6a3a');
+        ctx.save(); ctx.translate(x + w / 2, y + h / 2); ctx.rotate(-Math.PI / 2);
+        text(ctx, 'EMOLUMENTS', 0, -5, `bold 11px ${SERIF}`, '#4a3010', 'center'); text(ctx, 'CLAUSE', 0, 7, `bold 11px ${SERIF}`, '#4a3010', 'center');
+        ctx.restore();
+        break;
+      }
+      case 'ethics': { // the Office of Government Ethics, as an office block
+        ctx.fillStyle = '#9aa0ad'; ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = 'rgba(0,0,0,0.25)'; for (let wy = y + 8; wy < y + h - 6; wy += 14) { ctx.fillRect(x + 6, wy, 8, 8); ctx.fillRect(x + w - 14, wy, 8, 8); }
+        ctx.fillStyle = '#5c6270'; ctx.fillRect(x - 2, y, w + 4, 6);
+        ctx.save(); ctx.translate(x + w / 2, y + h / 2); ctx.rotate(-Math.PI / 2); text(ctx, 'ETHICS', 0, 0, `bold 12px ${TITLE_FONT}`, '#fff', 'center'); ctx.restore();
+        ctx.strokeStyle = '#333'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
+        break;
+      }
+      case 'monument': { // the Washington Monument
+        ctx.fillStyle = '#e9e6dc'; ctx.fillRect(x + 6, y + 14, w - 12, h - 14);
+        ctx.fillStyle = '#f7f5ee'; ctx.beginPath(); ctx.moveTo(x + 6, y + 14); ctx.lineTo(x + w / 2, y - 6); ctx.lineTo(x + w - 6, y + 14); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = 'rgba(0,0,0,0.15)'; ctx.fillRect(x + w / 2, y + 14, w / 2 - 6, h - 14);
+        ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 2; ctx.strokeRect(x + 6, y + 14, w - 12, h - 14);
+        break;
+      }
+      case 'mast': { // a ship's mast
+        ctx.fillStyle = '#6b7280'; ctx.fillRect(x + w / 2 - 5, y, 10, h);
+        ctx.fillStyle = '#4b5563'; ctx.fillRect(x - 6, y + 8, w + 12, 6); ctx.fillRect(x - 2, y + h * 0.5, w + 4, 5);
+        ctx.fillStyle = '#c8102e'; ctx.fillRect(x + w / 2 + 5, y + 14, 16, 10);
+        break;
+      }
+      case 'sand': { // sandstone
+        ctx.fillStyle = '#d9b77a'; ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = 'rgba(120,80,30,0.5)'; ctx.lineWidth = 1.5;
+        for (let by = y + 12; by < y + h; by += 14) { ctx.beginPath(); ctx.moveTo(x, by); ctx.lineTo(x + w, by); ctx.stroke(); }
+        ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
+        break;
+      }
+      case 'carpet': { // a red carpet on a gilded step
+        ctx.fillStyle = '#b8862b'; ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = '#8d1b3d'; ctx.fillRect(x, y, w, 8);
+        ctx.fillStyle = '#ffd400'; ctx.fillRect(x, y + 8, w, 2);
+        ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
+        break;
+      }
       case 'gag': case 'ceasefire': {
         const cease = o.skin === 'ceasefire';
         ctx.fillStyle = cease ? '#eef2f7' : '#2b2b33'; ctx.fillRect(x, y, w, h);
@@ -1740,6 +1900,50 @@
     }
   }
 
+  // The jet, facing right. (x, y) is the centre of the underside; s = scale; rot = nose tilt.
+  function drawJet(ctx, x, y, s, rot, e) {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(rot || 0); ctx.scale(s, s);
+    ctx.fillStyle = '#d9d9e2'; ctx.beginPath(); ctx.moveTo(-10, -14); ctx.lineTo(-52, 4); ctx.lineTo(-30, 4); ctx.lineTo(14, -14); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#8d8d99'; roundRect(ctx, -30, -6, 26, 12, 6); ctx.fill();
+    ctx.fillStyle = '#ffb347'; ctx.fillRect(-31, -3, 4, 6);
+    ctx.fillStyle = '#f7f7fa'; roundRect(ctx, -60, -32, 116, 24, 12); ctx.fill();
+    ctx.fillStyle = '#8d1b3d'; ctx.fillRect(-58, -19, 110, 4);
+    ctx.strokeStyle = '#3a3a44'; ctx.lineWidth = 2; roundRect(ctx, -60, -32, 116, 24, 12); ctx.stroke();
+    ctx.fillStyle = '#8d1b3d'; ctx.beginPath(); ctx.moveTo(-58, -30); ctx.lineTo(-38, -62); ctx.lineTo(-22, -62); ctx.lineTo(-30, -30); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#4a0a12'; ctx.lineWidth = 1.5; ctx.stroke();
+    text(ctx, 'QATAR', -40, -46, `bold 8px ${TITLE_FONT}`, '#fff', 'center');
+    ctx.fillStyle = '#2b3a55'; for (let i = 0; i < 7; i++) ctx.fillRect(-36 + i * 10, -27, 5, 4);
+    ctx.fillStyle = '#8fd3ff'; ctx.beginPath(); ctx.moveTo(40, -30); ctx.lineTo(52, -24); ctx.lineTo(40, -22); ctx.closePath(); ctx.fill();
+    ctx.save(); roundRect(ctx, 26, -30, 16, 12, 3); ctx.clip();
+    drawPose(ctx, 'thumbs', 34, -14, 26, false);
+    ctx.restore();
+    if (e) {
+      drawStamp(ctx, 'AIR FORCE ONE', -38, -46, -0.12, e.stamp1, '#c8102e', 9, null);
+      drawStamp(ctx, 'TRUMP LIBRARY', -38, -48, 0.1, e.stamp2, '#ffd400', 10, '#3a2a00');
+    }
+    ctx.restore();
+  }
+  // Joint Base Andrews: the runway, the terminal, a windsock, and during the ending the jet itself
+  function drawAndrews(ctx, sx, G, e) {
+    ctx.fillStyle = 'rgba(255,255,255,0.7)'; for (let x = sx - 400; x < sx + 900; x += 60) ctx.fillRect(x, GY - 6, 30, 3);
+    ctx.fillStyle = '#c8c8d0'; ctx.fillRect(sx + 420, GY - 90, 220, 90);
+    ctx.fillStyle = '#9a9aa6'; ctx.fillRect(sx + 480, GY - 140, 60, 50);
+    ctx.fillStyle = 'rgba(140,200,255,0.5)'; for (let i = 0; i < 6; i++) ctx.fillRect(sx + 432 + i * 34, GY - 70, 22, 30);
+    text(ctx, 'JOINT BASE ANDREWS', sx + 530, GY - 22, `bold 12px ${UI_FONT}`, '#333', 'center');
+    const ws = Math.sin(G.time * 3) * 4;
+    ctx.fillStyle = '#777'; ctx.fillRect(sx + 380, GY - 120, 4, 120);
+    ctx.fillStyle = '#ff8c00'; ctx.beginPath(); ctx.moveTo(sx + 384, GY - 120); ctx.lineTo(sx + 420 + ws, GY - 112); ctx.lineTo(sx + 420 + ws, GY - 104); ctx.lineTo(sx + 384, GY - 100); ctx.closePath(); ctx.fill();
+    if (e) {
+      const s = e.jetScale, jx = e.jetX - G.camX;
+      drawJet(ctx, jx, e.jetY, s, e.jetRot, e);
+      if (e.door > 0) {
+        const dx = jx + 10 * s, dy = e.jetY - 20 * s;
+        ctx.fillStyle = '#c9c9d4'; ctx.beginPath(); ctx.moveTo(dx, dy); ctx.lineTo(dx + 40 * s * e.door, GY); ctx.lineTo(dx + 54 * s * e.door, GY); ctx.lineTo(dx + 14 * s, dy); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = '#4a4a55'; ctx.lineWidth = 2; ctx.stroke();
+        if (e.door >= 1) drawPose(ctx, 'thumbs', dx + 7 * s, dy + 2, 32 * s, false);
+      }
+    }
+  }
   function drawObjects(ctx, G, pal) {
     const cam = G.camX, lv = G.level, def = lv.def;
     for (const d of lv.deco) {
@@ -1767,6 +1971,7 @@
           else if (def.ending.type === 'sign') drawBorderSign(ctx, o.x - cam, G, G.ending);
           else if (def.ending.type === 'canal') drawCanalGate(ctx, o.x - cam, G, G.ending);
           else if (def.ending.type === 'plaque') drawMoonSite(ctx, o.x - cam, G, G.ending);
+          else if (def.ending.type === 'jet') drawAndrews(ctx, o.x - cam, G, G.ending);
           else drawMapBoard(ctx, o.x - cam, G, G.ending);
           break;
       }
@@ -1785,7 +1990,7 @@
         else if (o.t === 'drone') { ctx.beginPath(); ctx.arc(o.cx - cam, PHYS.droneCY(o, beat), o.r, 0, Math.PI * 2); ctx.stroke(); }
       }
       const st = G.st;
-      if (st) ctx.strokeRect(st.x - C.PLAYER_W / 2 - cam, PHYS.hitTop(st), C.PLAYER_W, C.PLAYER_H);
+      if (st) { const hw = st.flying ? C.JET_W : C.PLAYER_W; ctx.strokeRect(st.x - hw / 2 - cam, PHYS.hitTop(st), hw, PHYS.hitBot(st) - PHYS.hitTop(st)); }
     }
   }
 
@@ -1794,6 +1999,7 @@
     if (!st || st.dead || G.ending) return;
     const px = G.viewX != null ? G.viewX : st.x, py = G.viewY != null ? G.viewY : st.y;
     const sx = px - G.camX;
+    if (st.flying) { drawJet(ctx, sx, py, 1, st.rot, null); return; }
     const idx = st.onGround ? Math.floor(st.x / 22) % 8 : 3;
     const fc = runFrames[idx];
     if (!fc) return;
@@ -1985,8 +2191,8 @@
   }
   // level-select card geometry (shared with input hit-testing)
   function menuCardRect(i, n) {
-    if (n > 4) { // two rows of three
-      const w = 250, h = 140, gap = 15, cols = 3;
+    if (n > 4) { // two rows of three, or of four once there are more than six levels
+      const cols = n > 6 ? 4 : 3, w = n > 6 ? 186 : 250, h = 140, gap = n > 6 ? 12 : 15;
       const x0 = 170 + (780 - (cols * w + (cols - 1) * gap)) / 2;
       return { x: x0 + (i % cols) * (w + gap), y: 118 + Math.floor(i / cols) * (h + 10), w, h };
     }
@@ -1994,6 +2200,14 @@
     const total = n * w + (n - 1) * gap;
     const x0 = 170 + (780 - total) / 2;
     return { x: x0 + i * (w + gap), y: 150, w, h };
+  }
+  // shorten a string with an ellipsis until it fits `maxW` in `font`
+  function fitText(ctx, str, maxW, font) {
+    ctx.font = font;
+    if (ctx.measureText(str).width <= maxW) return str;
+    let s = str;
+    while (s.length > 1 && ctx.measureText(s + '…').width > maxW) s = s.slice(0, -1);
+    return s.trimEnd() + '…';
   }
   function drawRunFrame(ctx, x) { const fc = runFrames[2]; if (fc) ctx.drawImage(fc, x, GY - fc.lh, fc.lw, fc.lh); }
   function drawThumb(ctx, def, x, y, w, h, G) {
@@ -2028,6 +2242,11 @@
       drawCanalGate(ctx, (w * 0.05) / s - 120, fakeG, { gate: 1, ship: 0.42, stamp1: 0, stamp2: 0, subSign: 0 });
       drawSpike(ctx, { x: (w * 0.1) / s, base: GY, flip: false, skin: 'croc' }, (w * 0.1) / s, pal);
       drawRunFrame(ctx, (w * 0.3) / s);
+    } else if (def.ending.type === 'jet') {
+      drawBlock(ctx, { l: 0, r: 40, top: GY - 150, bot: GY, w: 1, h: 4, skin: 'tower' }, (w * 0.62) / s, pal);
+      drawBlock(ctx, { l: 0, r: 40, top: GY - 90, bot: GY, w: 1, h: 2, skin: 'minaret' }, (w * 0.9) / s, pal);
+      drawSpike(ctx, { x: (w * 0.1) / s, base: GY, flip: false }, (w * 0.1) / s, pal);
+      drawJet(ctx, (w * 0.36) / s, GY - 170, 1.25, -0.18, null);
     } else if (def.ending.type === 'sign') {
       ctx.save(); ctx.scale(0.62, 0.62); ctx.translate(0, GY * 0.6);
       drawBorderSign(ctx, (w * 0.05) / (s * 0.62), fakeG, { stamp1: 0, stamp2: 0, flagY: 1, flag2Y: 0 });
@@ -2059,21 +2278,23 @@
       roundRect(ctx, r.x, r.y, r.w, r.h, 12); ctx.stroke();
       ctx.shadowBlur = 0;
       if (grid) {
-        drawThumb(ctx, def, r.x + 8, r.y + 8, 100, r.h - 16, G);
-        const tx = r.x + 118;
-        text(ctx, `${i + 1}. ${def.name}`, tx, r.y + 22, `bold 14px ${TITLE_FONT}`, '#fff', 'left');
+        const tight = r.w < 200; // four-column layout: narrower thumbnail and type
+        drawThumb(ctx, def, r.x + 8, r.y + 8, tight ? 56 : 100, r.h - 16, G);
+        const tx = r.x + (tight ? 72 : 118), maxW = r.x + r.w - 8 - tx;
+        text(ctx, fitText(ctx, `${i + 1}. ${def.name}`, maxW, `bold ${tight ? 12 : 14}px ${TITLE_FONT}`), tx, r.y + 22, `bold ${tight ? 12 : 14}px ${TITLE_FONT}`, '#fff', 'left');
         const diffCol = def.difficulty === 'EXTREME' ? '#ff2d95' : def.difficulty === 'INSANE' ? '#c8102e' : def.difficulty === 'EXPERT' ? '#8e44ad' : def.difficulty === 'HARD' ? '#ff8c00' : '#2ecc71';
-        ctx.fillStyle = diffCol; roundRect(ctx, tx, r.y + 34, 58, 16, 8); ctx.fill();
-        text(ctx, def.difficulty, tx + 29, r.y + 42, `bold 9px ${TITLE_FONT}`, '#fff', 'center');
-        text(ctx, `${def.bpm} BPM`, tx + 66, r.y + 42, `10px ${UI_FONT}`, '#cfd3ff', 'left');
-        text(ctx, def.tagline, tx, r.y + 62, `10px ${UI_FONT}`, '#cfd3ff', 'left');
-        const sf = `bold 10px ${TITLE_FONT}`;
+        const pw = tight ? 48 : 58;
+        ctx.fillStyle = diffCol; roundRect(ctx, tx, r.y + 34, pw, 16, 8); ctx.fill();
+        text(ctx, def.difficulty, tx + pw / 2, r.y + 42, `bold ${tight ? 8 : 9}px ${TITLE_FONT}`, '#fff', 'center');
+        text(ctx, `${def.bpm} BPM`, tx + pw + 8, r.y + 42, `${tight ? 9 : 10}px ${UI_FONT}`, '#cfd3ff', 'left');
+        text(ctx, fitText(ctx, def.tagline, maxW, `${tight ? 9 : 10}px ${UI_FONT}`), tx, r.y + 62, `${tight ? 9 : 10}px ${UI_FONT}`, '#cfd3ff', 'left');
+        const sf = `bold ${tight ? 9 : 10}px ${TITLE_FONT}`, vx = tx + (tight ? 28 : 34);
         const best = G.best[def.id] || 0, wins = G.wins[def.id] || 0, pbest = G.pbest[def.id] || 0, pwins = G.pwins[def.id] || 0;
         text(ctx, 'REG', tx, r.y + 88, sf, '#ffffff', 'left');
-        text(ctx, `BEST ${best.toFixed(0)}%  ·  ${wins}×`, tx + 34, r.y + 88, sf, '#7dffb0', 'left');
+        text(ctx, `BEST ${best.toFixed(0)}%  ·  ${wins}×`, vx, r.y + 88, sf, '#7dffb0', 'left');
         text(ctx, 'PRAC', tx, r.y + 106, sf, '#ffffff', 'left');
-        text(ctx, `BEST ${pbest.toFixed(0)}%  ·  ${pwins}×`, tx + 34, r.y + 106, sf, '#8fd3ff', 'left');
-        if (sel && blink) text(ctx, '▶', r.x + r.w - 16, r.y + 124, `bold 16px ${TITLE_FONT}`, '#ffd400', 'center');
+        text(ctx, `BEST ${pbest.toFixed(0)}%  ·  ${pwins}×`, vx, r.y + 106, sf, '#8fd3ff', 'left');
+        if (sel && blink) text(ctx, '▶', r.x + r.w - 14, r.y + 124, `bold 16px ${TITLE_FONT}`, '#ffd400', 'center');
         continue;
       }
       drawThumb(ctx, def, r.x + 10, r.y + 10, r.w - 20, compact ? 86 : 100, G);
@@ -2193,6 +2414,7 @@
     drawBackground(ctx, G, pal, G.level.def.backdrop);
     drawGround(ctx, G, pal, G.level);
     drawCeilings(ctx, G, pal, G.level);
+    drawFlightZones(ctx, G, G.level);
     drawObjects(ctx, G, pal);
     drawPlayer(ctx, G);
     drawEndingExtras(ctx, G);

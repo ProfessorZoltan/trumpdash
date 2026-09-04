@@ -3,11 +3,11 @@
 // keeps doing its job); the cached copy is only used when the network fails, which is what lets the
 // installed app (Add to Home Screen / the Play Store shell) start without a connection.
 // Bump CACHE when PRECACHE changes so stale entries are dropped on activate.
-const CACHE = 'trumpdash-v1';
+const CACHE = 'trumpdash-v2';
 const PRECACHE = [
   './', 'index.html', 'style.css', 'manifest.json', 'privacy.html',
   'src/constants.js', 'src/sprites.js', 'src/level.js',
-  'src/levels/greenland.js', 'src/levels/venezuela.js', 'src/levels/hormuz.js', 'src/levels/canada.js', 'src/levels/panama.js', 'src/levels/moon.js',
+  'src/levels/greenland.js', 'src/levels/venezuela.js', 'src/levels/hormuz.js', 'src/levels/canada.js', 'src/levels/panama.js', 'src/levels/moon.js', 'src/levels/qatar.js',
   'src/physics.js', 'src/audio.js', 'src/render.js', 'src/game.js',
   'resources/sprite_sheet.png', 'resources/greenland_map.png', 'resources/florida_map.png',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-512-maskable.png', 'icons/apple-touch-icon.png',

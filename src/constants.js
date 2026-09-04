@@ -31,5 +31,20 @@
   };
   C.setTempo(128);
 
+  // Flight (the jet): hold = thrust up, release = sink. The vertical speed eases toward a terminal
+  // speed (+/- FLY_VMAX) with time constant FLY_TAU, so a timing error costs a bounded distance
+  // (about 18 px per 60 ms) and then fades instead of compounding across the next gates. The ceiling
+  // and the floor are safe surfaces to hug. st.y is the jet's underside.
+  C.JET_W = 88; C.JET_H = 34;
+  C.FLY_VMAX = 300; C.FLY_TAU = 0.18;
+  C.flyStep = function (st, held, dt) {
+    const target = held ? -C.FLY_VMAX : C.FLY_VMAX;
+    st.vy += (target - st.vy) * (1 - Math.exp(-dt / C.FLY_TAU));
+    st.y += st.vy * dt;
+    const top = C.CEIL_Y + C.JET_H;
+    if (st.y < top) { st.y = top; if (st.vy < 0) st.vy = 0; }
+    if (st.y > C.GROUND_Y) { st.y = C.GROUND_Y; if (st.vy > 0) st.vy = 0; }
+  };
+
   root.TD_CONST = C;
 })(typeof window !== 'undefined' ? window : globalThis);

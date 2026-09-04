@@ -47,6 +47,65 @@
     const lowg = [];
     const kAt = (b) => { for (const z of lowg) if (b >= z.b0 && b < z.b1) return z.k; return 1; };
     function LOWG(b0, b1, k) { lowg.push({ b0, b1, k: k || 2 }); lowg.sort((a, c) => a.b0 - c.b0); }
+    // Flight zones: inside FLY(b0, b1) the player is the jet (hold = climb, release = sink). The level
+    // declares HOLD(b0, b1) intervals for the intended flight; the verifier and autoplay follow them,
+    // and GATE / FLYCOIN / FLYMINE are cut around the resulting path, so flying the cues exactly clears
+    // the section. Declare a zone's HOLDs before its gates. A hold's start is a press cue (jumpBeats),
+    // its end a release cue (releaseBeats).
+    const fly = [], holds = [], releaseBeats = [];
+    function FLY(b0, b1) { fly.push({ b0, b1 }); fly.sort((a, c) => a.b0 - c.b0); curH = 0; }
+    function HOLD(b0, b1) { holds.push([b0, b1]); jumpBeats.push(b0); releaseBeats.push(b1); }
+    const flyZoneAt = (b) => { for (const z of fly) if (b >= z.b0 && b <= z.b1) return z; return null; };
+    const paths = new Map(); // simulated jet paths per zone (underside y per physics step)
+    function flyPath(z) {
+      const key = z.b0 + ':' + holds.length;
+      if (paths.has(key)) return paths.get(key);
+      const ys = [], st = { y: G, vy: 0 };
+      const n = Math.ceil(((z.b1 - z.b0) * C.BEAT_SEC) / C.DT);
+      let t = z.b0 * C.BEAT_SEC;
+      for (let i = 0; i <= n; i++) {
+        ys.push(st.y);
+        const b = t / C.BEAT_SEC;
+        let held = false;
+        for (const h of holds) if (b >= h[0] && b < h[1]) { held = true; break; }
+        C.flyStep(st, held, C.DT);
+        t += C.DT;
+      }
+      const p = { ys, t0: z.b0 * C.BEAT_SEC };
+      paths.set(key, p);
+      return p;
+    }
+    // jet centre y at a beat inside a flight zone, following the declared holds
+    function flyY(beat) { return flyRange(beat, beat).min; }
+    // lowest and highest jet centre y over [b0, b1]
+    function flyRange(b0, b1) {
+      const z = flyZoneAt(b0);
+      if (!z) throw new Error('flight helper used outside a FLY zone at beat ' + b0);
+      const p = flyPath(z), last = p.ys.length - 1;
+      const i0 = Math.max(0, Math.min(last, Math.round((b0 * C.BEAT_SEC - p.t0) / C.DT)));
+      const i1 = Math.max(0, Math.min(last, Math.round((b1 * C.BEAT_SEC - p.t0) / C.DT)));
+      let min = Infinity, max = -Infinity;
+      for (let i = i0; i <= i1; i++) { const y = p.ys[i] - C.JET_H / 2; if (y < min) min = y; if (y > max) max = y; }
+      return { min, max };
+    }
+    // A gate in flight: a column up from the floor and one down from the sky, leaving `gap` px above
+    // and below the jet's path for the whole time the jet overlaps the column (it is 88 px long and
+    // the column 40 px wide, so about a third of a beat either side of `beat`). Put gates where the
+    // path is level, near the top or bottom of an arc, or the corridor gets tall.
+    const TRANSIT = (C.JET_W / 2 + B / 2) / BP;
+    function GATE(beat, gap, skinBot, skinTop, label) {
+      const r = flyRange(beat - TRANSIT, beat + TRANSIT), x = bx(beat) - B / 2;
+      gap = gap || 60;
+      if (r.max + gap < G - 4) slabRaw(x, 1, r.max + gap, G, skinBot || 'tower', label);
+      if (r.min - gap > CY + 4) slabRaw(x, 1, CY, r.min - gap, skinTop || 'cloud');
+    }
+    // A mine beside the path: `dy` px below (positive) or above (negative) the path's envelope while
+    // the jet passes, so the clearance holds for the whole crossing
+    function FLYMINE(beat, dy, skin) {
+      const r = flyRange(beat - TRANSIT, beat + TRANSIT);
+      objs.push({ t: 'mine', cx: bx(beat), cy: dy >= 0 ? r.max + dy : r.min + dy, r: 16, skin: skin || 'mine' });
+    }
+    function FLYCOIN(beat, dy) { objs.push({ t: 'coin', cx: bx(beat), cy: flyY(beat) + (dy || 0), got: false }); }
     let curH = 0;         // height (in blocks) the player is currently running on
     let flipped = false;  // gravity state at the current point of the level
     let ceilStart = 0;
@@ -189,10 +248,11 @@
     function SCENE(beat, kind) { deco.push({ t: 'scene', x: bx(beat), kind }); }
     function GOAL(beat) { endBeat = beat; objs.push({ t: 'goal', x: bx(beat) }); }
 
-    def.build({ S, spikeRaw, blockRaw, slabRaw, OVER, WALLJ, P, DROP, O, PAD, COIN, CEIL, MINE, MS, MINES, DRONE, GJ, GAP, FLIP, FLIPRUN, ICE, LOWG, LIFT, SIGN, SCENE, GOAL, bx, mAt, kAt, JO, B, G, CY });
+    def.build({ S, spikeRaw, blockRaw, slabRaw, OVER, WALLJ, P, DROP, O, PAD, COIN, CEIL, MINE, MS, MINES, DRONE, GJ, GAP, FLIP, FLIPRUN, ICE, LOWG, LIFT, FLY, HOLD, GATE, FLYCOIN, FLYMINE, flyY, SIGN, SCENE, GOAL, bx, mAt, kAt, JO, B, G, CY });
     if (flipped) ceilings.push({ l: ceilStart, r: bx(endBeat) + 400 });
     for (const z of zones) { z.x0 = xAtBeat(z.b0); z.x1 = xAtBeat(z.b1); }
     for (const z of lowg) { z.x0 = xAtBeat(z.b0); z.x1 = xAtBeat(z.b1); }
+    for (const z of fly) { z.x0 = xAtBeat(z.b0); z.x1 = xAtBeat(z.b1); }
 
     // ---- finalize ----
     let totalCoins = 0;
@@ -210,7 +270,8 @@
     gaps.sort((a, b) => a.l - b.l);
     ceilings.sort((a, b) => a.l - b.l);
     const jb = Array.from(new Set(jumpBeats)).sort((a, b) => a - b);
-    return { def, objs, deco, gaps, ceilings, zones, lowg, xAtBeat, jumpBeats: jb, jumpSet: new Set(jb), endBeat, totalCoins, lengthPx: bx(endBeat) };
+    holds.sort((a, c) => a[0] - c[0]);
+    return { def, objs, deco, gaps, ceilings, zones, lowg, fly, holds, releaseSet: new Set(releaseBeats), xAtBeat, jumpBeats: jb, jumpSet: new Set(jb), endBeat, totalCoins, lengthPx: bx(endBeat) };
   }
 
   // A checkpoint may sit on an integer beat only if no press is required on that beat or its

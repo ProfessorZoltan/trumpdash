@@ -105,8 +105,8 @@ const PLANS = {
   mobile_menu: { url: '?noaudio=1&mute=1&debug=1&practice=0', shots: [
     ['mm_menu', (s) => s.state === 'menu', { check: "({coarse: matchMedia('(pointer: coarse)').matches, touch: TD_GAME.touch, fs: TD_GAME.fsAvailable, rotate: getComputedStyle(document.getElementById('rotate')).display, canvas: document.getElementById('game').getBoundingClientRect().toJSON(), vw: innerWidth, vh: innerHeight, dpr: devicePixelRatio})" }],
     ['mm_practice_on', (s) => s.state === 'menu' && !s.practice, { tap: [85, 128] }],
-    ['mm_pick', (s) => s.state === 'menu' && s.practice, { tap: [560, 188] }],
-    ['mm_start', (s) => s.state === 'menu' && s.levelIdx === 1, { tap: [560, 188] }],
+    ['mm_pick', (s) => s.state === 'menu' && s.practice, { tap: [461, 188] }],
+    ['mm_start', (s) => s.state === 'menu' && s.levelIdx === 1, { tap: [461, 188] }],
     ['mm_playing', (s) => s.state === 'playing' && s.beat > 1.5, { tap: [923, 28] }],
     ['mm_paused', (s) => s.state === 'paused', { tap: [375, 219] }],
     ['mm_resumed', (s) => s.state === 'playing' && s.beat > 2.5, { tap: [923, 28] }],
@@ -138,6 +138,7 @@ const PLANS = {
     { url: '?level=venezuela&autoplay=1&noaudio=1&clean=1&start=155&debug=1&practice=0', shots: [['s10_truck', (s) => s.ending && s.ending.phase === 'stamp2' && s.ending.stamp2 >= 1]], timeout: 30000 },
     { url: '?level=hormuz&autoplay=1&noaudio=1&clean=1&start=166&debug=1&practice=0', shots: [['s11_toll', (s) => s.ending && s.ending.tolls >= 3]], timeout: 40000 },
     { url: '?level=greenland&autoplay=1&noaudio=1&clean=1&start=146&debug=1&practice=0', shots: [['s12_map', (s) => s.ending && s.ending.phase === 'slide' && s.ending.slide >= 1]], timeout: 40000 },
+    { url: '?level=qatar&autoplay=1&noaudio=1&clean=1&start=62&debug=1&practice=0', shots: [['s13_jet', (s) => s.beat >= 74.6 && s.flying], ['s14_storm', (s) => s.beat >= 129.7]], timeout: 60000 },
   ] },
   // ---- offline: `swinstall` registers the service worker and waits for the precache (keep the same
   // PORT so the Chrome profile persists), then stop the web server and run `offline` ----
@@ -155,7 +156,7 @@ const PLANS = {
     ['cal_taps', (s) => s.calib && s.calib.n >= 6],
     ['cal_done', (s) => s.calib && s.calib.phase === 'done', { check: "({offsetMs: TD_GAME.offsetMs, measured: TD_GAME.calib.measured, taps: TD_GAME.calib.taps.map((e)=>Math.round(e*1000))})" }],
     ['cal_closed', (s) => s.calib && s.calib.phase === 'done', { tap: [260, 443] }],
-    ['cal_start', (s) => s.state === 'menu' && s.offsetMs > 55 && s.offsetMs < 140, { tap: [295, 188] }],
+    ['cal_start', (s) => s.state === 'menu' && s.offsetMs > 55 && s.offsetMs < 140, { tap: [263, 188] }],
     ['cal_playing', (s) => s.state === 'playing', { check: "({offset: TD_AUDIO_ENGINE.offset, user: TD_AUDIO_ENGINE.userOffset, auto: TD_AUDIO_ENGINE.autoLatency()})" }],
   ], timeout: 45000 },
   // ---- the same buttons with a mouse ----
@@ -188,6 +189,21 @@ const PLANS = {
       return s.beat >= 60 || (s.state !== 'playing' && s.attempt > 1);
     }],
   ], timeout: 60000 },
+  tour7: { url: '?level=qatar&autoplay=1&noaudio=1&mute=1&start=0&debug=1', shots: [
+    ['j_start', (s) => s.beat >= 1.5], ['j_gift', (s) => s.beat >= 20.3], ['j_stairs', (s) => s.beat >= 25.6], ['j_pits', (s) => s.beat >= 33.5],
+    ['j_ceiling', (s) => s.beat >= 39.85], ['j_palace', (s) => s.beat >= 50.4], ['j_board', (s) => s.beat >= 63.8],
+    ['j_fly1', (s) => s.beat >= 66.2 && s.flying], ['j_towers', (s) => s.beat >= 74.6], ['j_westbay', (s) => s.beat >= 85.2],
+    ['j_atlantic', (s) => s.beat >= 101.6], ['j_storm', (s) => s.beat >= 117.6], ['j_storm2', (s) => s.beat >= 129.6],
+    ['j_dc', (s) => s.beat >= 150.2], ['j_approach', (s) => s.beat >= 157.3], ['j_complete', (s) => s.state === 'complete'],
+  ], timeout: 120000 },
+  ending7: { url: '?level=qatar&autoplay=1&noaudio=1&mute=1&start=62&debug=1', shots: [
+    ['jt_enter', (s) => s.ending && s.ending.phase === 'enter'],
+    ['jt_taxi', (s) => s.ending && s.ending.phase === 'taxi'],
+    ['jt_stamp1', (s) => s.ending && s.ending.phase === 'stamp1' && s.ending.stamp1 >= 1],
+    ['jt_stamp2', (s) => s.ending && s.ending.phase === 'stamp2' && s.ending.stamp2 >= 1],
+    ['jt_wave', (s) => s.ending && s.ending.phase === 'wave' && s.ending.door >= 1],
+    ['jt_complete', (s) => s.state === 'complete'],
+  ], timeout: 75000 },
   probe: { url: process.env.PROBE_URL || '?debug=1', shots: [
     ['probe', (s) => { if (s.frames % 40 < 3) console.log('PROBE', JSON.stringify({ frames: s.frames, state: s.state, level: s.level, beat: +(s.beat || 0).toFixed(2), attempt: s.attempt, gk: s.gk, song: +(s.song || 0).toFixed(2), err: s.err })); return s.frames > 420; }],
   ], timeout: 15000 },

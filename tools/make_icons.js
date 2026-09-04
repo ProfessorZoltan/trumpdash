@@ -81,7 +81,7 @@ const RENDER_ICONS = `(function () {
     c.font = 'bold 34px Impact, "Arial Black", sans-serif'; c.lineWidth = 8; c.fillStyle = '#fff';
     c.strokeText('RUN. JUMP. ANNEX. STAY ON THE BEAT.', 670, 252); c.fillText('RUN. JUMP. ANNEX. STAY ON THE BEAT.', 670, 252);
     c.font = 'bold 19px Impact, "Arial Black", sans-serif'; c.lineWidth = 6; c.fillStyle = '#7dffb0';
-    c.strokeText('SIX LEVELS: GREENLAND · VENEZUELA · HORMUZ · CANADA · PANAMA · THE MOON', 670, 300); c.fillText('SIX LEVELS: GREENLAND · VENEZUELA · HORMUZ · CANADA · PANAMA · THE MOON', 670, 300);
+    c.strokeText('SEVEN LEVELS: GREENLAND · VENEZUELA · HORMUZ · CANADA · PANAMA · THE MOON · QATARI JET', 670, 300); c.fillText('SEVEN LEVELS: GREENLAND · VENEZUELA · HORMUZ · CANADA · PANAMA · THE MOON · QATARI JET', 670, 300);
     c.shadowColor = 'rgba(0,0,0,0.6)'; c.shadowBlur = 18; c.shadowOffsetY = 8;
     R.drawPose(c, 'thumbs', 185, 488, 430, false);
     c.shadowColor = 'transparent';

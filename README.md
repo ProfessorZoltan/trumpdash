@@ -1,6 +1,6 @@
 # Trump Dash
 
-A parody rhythm platformer in the style of Geometry Dash, with six levels you pick from the
+A parody rhythm platformer in the style of Geometry Dash, with seven levels you pick from the
 main menu.
 
 **Level 1 — GREENLAND (Normal, 112 BPM).** The on-ramp. From Nuuk across the ice past polar
@@ -49,6 +49,18 @@ the text NASA unveiled ("America has returned… Signed, President Donald Trump"
 stamped RETURNED and then TRUMP, and Trump bounces around in one-sixth gravity while a UFO
 flies past.
 
+**Level 7 — QATARI JET (Expert, 136 BPM, hijaz).** Two halves. On foot through Doha with the
+newer ground vocabulary: stairs of platforms to climb, four pits in a row that need a jump every
+beat, and low sandstone ceilings with hanging spikes right before a spike, so jumping early is fatal
+and jumping on the beat is the only line. Then the gift itself: at the Amiri Diwan the player
+boards the jet and the button becomes thrust. **Hold to climb, release to sink**; the cloud deck and
+the ground are safe to hug. Gates of Doha towers and storm clouds, ship masts over the Atlantic,
+"ETHICS" office blocks and hanging **EMOLUMENTS CLAUSE** parchments in the storm, and the
+Washington Monument on the approach are all cut around the intended flight, so holding and
+releasing on the cues (accent + clap to hold, zap to release) flies straight through. It ends on
+the runway at Joint Base Andrews, where the tail is stamped **AIR FORCE ONE** and then **TRUMP
+LIBRARY**, the airstair drops, and Trump gives a thumbs-up from the door.
+
 Satire. Not affiliated with any person, government or oil company.
 
 ## Play
@@ -69,7 +81,7 @@ returning players never run a mix of old and new modules.
 | Key | Action |
 | --- | --- |
 | ← → / 1–6 / click a card | Choose a level on the menu |
-| Space / ↑ / W / Enter / click / tap | Start, and jump (hold to keep jumping, like Geometry Dash) |
+| Space / ↑ / W / Enter / click / tap | Start, and jump (hold to keep jumping, like Geometry Dash). In flight: hold to climb, release to sink |
 | Esc, or the ⏸ button top-right | Pause (the pause screen has Resume / Restart / Practice / Sound / Quit buttons) |
 | R | Restart from the beginning |
 | P, or the PRACTICE toggle | Toggle practice mode (auto checkpoints every few bars, all flags stay visible) |
@@ -136,7 +148,13 @@ still placed on exact beats while the world scrolls faster. `LIFT(press, width, 
 places a lock barge that is lowest exactly when the jump pressed on `press` lands on it and
 highest half a period later; the player rides it and jumps off near the top. `LOWG(startBeat,
 endBeat, k)` divides gravity by k inside a zone; every helper scales its apex offset by k, so a
-low-gravity jump still lands its hazard on the beat.
+low-gravity jump still lands its hazard on the beat. `FLY(startBeat, endBeat)` turns the player
+into the jet: the vertical speed eases toward a terminal climb or dive depending on the button, so
+a timing error costs a bounded distance that then fades. The level declares the intended flight as
+`HOLD(pressBeat, releaseBeat)` intervals; `GATE(beat, gap, floorSkin, skySkin)`, `FLYCOIN` and
+`FLYMINE` simulate that flight at build time and place themselves around the path's envelope
+during the crossing, so the verifier can prove the section and measure the window of every press
+and release.
 
 The music is generated live with the Web Audio API. `src/audio.js` owns the instruments and the
 16th-note scheduler; each level's file owns its arrangement. Every beat that requires a jump
@@ -159,6 +177,7 @@ the old stepping for comparison; the `jitter` harness plan measures it.
   (server must be running on port 8765) and captures screenshots. Plans: `menu`, `tour`,
   `ending`, `practice`, `audio` (Venezuela), `tour2`, `ending2` (Hormuz) and `tour3`, `ending3`
   (Greenland), `tour4`, `ending4` (Canada), `tour5`, `ending5` (Panama), `tour6`, `ending6` (Moon),
+  `tour7`, `ending7` (Qatari Jet),
   plus `desk_pause`, `complete_tap` and `calib` (clicking the on-screen buttons and driving the sync
   calibration with synthetic taps) and, with `MOBILE=landscape`, `mobile_menu` and `mobile_rotate`,
   which emulate a phone with touch and walk the touch UI. `PERF_LEVEL=<id> THROTTLE=4 node
@@ -172,7 +191,7 @@ the old stepping for comparison; the `jitter` harness plan measures it.
   one moment per mechanic, three endings) into `store/`; `store/listing.md` holds the listing copy and
   the Play Console form answers. The PNGs are not committed.
 
-Debug URL parameters: `?level=greenland|venezuela|hormuz|canada|panama|moon`, `?autoplay=1`, `?start=<beat>`, `?noaudio=1`, `?mute=1`,
+Debug URL parameters: `?level=greenland|venezuela|hormuz|canada|panama|moon|qatar`, `?autoplay=1`, `?start=<beat>`, `?noaudio=1`, `?mute=1`,
 `?practice=1`, `?debug=1`.
 
 ## Files
@@ -189,6 +208,7 @@ src/levels/hormuz.js     Hormuz: layout, palettes, music, death messages
 src/levels/canada.js     The 51st State: layout, palettes, music, death messages
 src/levels/panama.js     Panama Canal: layout, palettes, music, death messages
 src/levels/moon.js       The Moon: layout, palettes, music, death messages
+src/levels/qatar.js      Qatari Jet: layout (on foot, then flight), palettes, music, death messages
 src/physics.js           deterministic player physics + collisions (spikes, blocks, mines, drones, water, gravity flip, ice speed zones, lock lifts, low gravity)
 src/audio.js             instruments, scheduler and sound effects
 src/render.js            canvas rendering, HUD, level-select menu, truck / toll-booth / map / border-sign / canal-gate / moon-plaque endings

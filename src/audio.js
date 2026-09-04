@@ -20,6 +20,7 @@
       this.endStep = Infinity;
       this.level = null;
       this.engineNodes = null;
+      this.jetNodes = null;
       // Sync: the music is scheduled `offset` seconds early so a tap that arrives late (audio output
       // latency + touch latency) still lands on the physics beat. offset = the calibrated residual
       // (userOffset) + whatever latency the platform reports (autoLatency), recomputed per song.
@@ -359,7 +360,7 @@
       const beat = step / 4;
       const info = {
         t, step, bar, sib, bib, sub, beat, sec: LV.sectionAt(lv, beat).name,
-        on8: sub === 0 || sub === 2, isJump: lv.jumpSet.has(beat), STEP: stepSec(), BEAT: C.BEAT_SEC,
+        on8: sub === 0 || sub === 2, isJump: lv.jumpSet.has(beat), isRelease: !!(lv.releaseSet && lv.releaseSet.has(beat)), STEP: stepSec(), BEAT: C.BEAT_SEC,
       };
       lv.def.music.step(this, info);
     }
@@ -551,6 +552,38 @@
         e.g.gain.linearRampToValueAtTime(0.0001, t + dur);
         e.o1.stop(t + dur + 0.1); e.o2.stop(t + dur + 0.1); e.lfo.stop(t + dur + 0.1);
         setTimeout(() => { this.engineNodes = null; }, (dur + 0.2) * 1000);
+      });
+    }
+    // The jet: filtered noise with a slow wobble; louder and brighter while the thrust is held
+    jetStart() {
+      this.sfx((ctx, t) => {
+        if (this.jetNodes) return;
+        const src = ctx.createBufferSource(); src.buffer = this.noiseBuf; src.loop = true;
+        const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 700; bp.Q.value = 0.7;
+        const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2400;
+        const lfo = ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 0.7;
+        const lfoG = ctx.createGain(); lfoG.gain.value = 160;
+        lfo.connect(lfoG); lfoG.connect(bp.frequency);
+        const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.16, t + 0.5);
+        src.connect(bp); bp.connect(lp); lp.connect(g); g.connect(this.sfxBus);
+        src.start(t); lfo.start(t);
+        this.jetNodes = { src, bp, lp, lfo, g, thrust: false };
+      });
+    }
+    jetThrust(on) {
+      const j = this.jetNodes;
+      if (!j || j.thrust === !!on || !this.ctx) return;
+      j.thrust = !!on;
+      const t = this.ctx.currentTime;
+      j.g.gain.cancelScheduledValues(t); j.g.gain.setTargetAtTime(on ? 0.3 : 0.16, t, 0.08);
+      j.bp.frequency.cancelScheduledValues(t); j.bp.frequency.setTargetAtTime(on ? 1300 : 700, t, 0.12);
+    }
+    jetStop() {
+      this.sfx((ctx, t) => {
+        const j = this.jetNodes; if (!j) return;
+        j.g.gain.cancelScheduledValues(t); j.g.gain.setValueAtTime(j.g.gain.value, t); j.g.gain.linearRampToValueAtTime(0.0001, t + 0.4);
+        try { j.src.stop(t + 0.5); j.lfo.stop(t + 0.5); } catch (e) { /* already stopped */ }
+        this.jetNodes = null;
       });
     }
     engineStop() {
