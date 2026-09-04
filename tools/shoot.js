@@ -1,6 +1,7 @@
 // Real-time screenshot harness: drives headless Chrome over CDP, polls the game's
 // debug state (?debug=1) and captures screenshots when conditions are met.
 // usage: node tools/shoot.js <plan> [outDir]   plans: ending, tour, audio, ... (see PLANS)
+// STORE=1 renders the canvas at exactly 1920x1080 for store screenshots (plan `store`).
 // MOBILE=landscape|portrait emulates a phone (844x390 @2x, touch); plan actions may then `tap` canvas
 // coordinates (touch taps on mobile, mouse clicks otherwise), `rotate` the phone, or `check` a JS expression.
 const { spawn } = require('child_process');
@@ -119,6 +120,20 @@ const PLANS = {
     ['mr_back', (s) => s.state === 'paused', { rotate: 'landscape' }],
     ['mr_landscape', (s) => s.state === 'paused', { check: "({rotate: getComputedStyle(document.getElementById('rotate')).display, canvas: document.getElementById('game').getBoundingClientRect().toJSON()})" }],
   ], timeout: 30000 },
+  // ---- store screenshots (run with STORE=1): the menu, one moment per mechanic, three endings ----
+  store: { segments: [
+    { url: '?noaudio=1&clean=1&debug=1&practice=0', shots: [['s01_menu', (s) => s.state === 'menu' && s.frames > 40]], timeout: 20000 },
+    { url: '?level=venezuela&autoplay=1&noaudio=1&clean=1&start=22&debug=1&practice=0', shots: [['s02_constitution', (s) => s.beat >= 28.3]], timeout: 30000 },
+    { url: '?level=greenland&autoplay=1&noaudio=1&clean=1&start=60&debug=1&practice=0', shots: [['s03_portal', (s) => s.beat >= 66.45], ['s04_flipped', (s) => s.beat >= 82.5]], timeout: 40000 },
+    { url: '?level=hormuz&autoplay=1&noaudio=1&clean=1&start=58&debug=1&practice=0', shots: [['s05_catapult', (s) => s.beat >= 64.45]], timeout: 30000 },
+    { url: '?level=canada&autoplay=1&noaudio=1&clean=1&start=64&debug=1&practice=0', shots: [['s06_ice', (s) => s.beat >= 70.3 && s.speedMul > 1]], timeout: 30000 },
+    { url: '?level=panama&autoplay=1&noaudio=1&clean=1&start=44&debug=1&practice=0', shots: [['s07_lock', (s) => s.beat >= 49.9]], timeout: 30000 },
+    { url: '?level=moon&autoplay=1&noaudio=1&clean=1&start=60&debug=1&practice=0', shots: [['s08_lowg', (s) => s.beat >= 66.8 && s.gk > 1]], timeout: 30000 },
+    { url: '?level=moon&autoplay=1&noaudio=1&clean=1&start=119&debug=1&practice=0', shots: [['s09_moonflip', (s) => s.beat >= 125.7 && s.grav === -1]], timeout: 30000 },
+    { url: '?level=venezuela&autoplay=1&noaudio=1&clean=1&start=155&debug=1&practice=0', shots: [['s10_truck', (s) => s.ending && s.ending.phase === 'stamp2' && s.ending.stamp2 >= 1]], timeout: 30000 },
+    { url: '?level=hormuz&autoplay=1&noaudio=1&clean=1&start=166&debug=1&practice=0', shots: [['s11_toll', (s) => s.ending && s.ending.tolls >= 3]], timeout: 40000 },
+    { url: '?level=greenland&autoplay=1&noaudio=1&clean=1&start=146&debug=1&practice=0', shots: [['s12_map', (s) => s.ending && s.ending.phase === 'slide' && s.ending.slide >= 1]], timeout: 40000 },
+  ] },
   // ---- offline: `swinstall` registers the service worker and waits for the precache (keep the same
   // PORT so the Chrome profile persists), then stop the web server and run `offline` ----
   swinstall: { url: '?sw=1&noaudio=1&mute=1&debug=1', shots: [
@@ -226,6 +241,7 @@ class CDP {
   const MOBILE = process.env.MOBILE || '';
   const metrics = (mode) => { const p = mode === 'portrait'; return { width: p ? 390 : 844, height: p ? 844 : 390, deviceScaleFactor: 2, mobile: true, screenWidth: p ? 390 : 844, screenHeight: p ? 844 : 390, screenOrientation: { type: p ? 'portraitPrimary' : 'landscapePrimary', angle: p ? 0 : 90 } }; };
   if (process.env.THROTTLE) await cdp.send('Emulation.setCPUThrottlingRate', { rate: parseFloat(process.env.THROTTLE) });
+  if (process.env.STORE) await cdp.send('Emulation.setDeviceMetricsOverride', { width: 960, height: 540, deviceScaleFactor: 2, mobile: false });
   if (MOBILE) {
     await cdp.send('Emulation.setDeviceMetricsOverride', metrics(MOBILE));
     await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
@@ -244,38 +260,45 @@ class CDP {
     }
     await sleep(150);
   };
-  await cdp.send('Page.navigate', { url: BASE + plan.url });
-  const t0 = Date.now();
-  let idx = 0, lastState = null;
-  while (idx < plan.shots.length && Date.now() - t0 < plan.timeout) {
-    const txt = await cdp.eval("(document.getElementById('dbg')||{}).textContent || ''");
-    let s = null; try { s = JSON.parse(txt); } catch (e) { s = null; }
-    if (s) {
-      lastState = s;
-      if (s.err) { console.log('PAGE ERROR:', s.err); break; }
-      const [name, cond, action] = plan.shots[idx];
-      if (cond(s)) {
-        if (action && action.key) {
-          const special = { ArrowRight: 39, ArrowLeft: 37, Space: 32 };
-          const code = special[action.key] ? action.key : 'Key' + action.key.toUpperCase();
-          const vk = special[action.key] || action.key.toUpperCase().charCodeAt(0);
-          await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: action.key, code, windowsVirtualKeyCode: vk });
-          await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: action.key, code, windowsVirtualKeyCode: vk });
-          await sleep(60);
+  const segments = plan.segments || [{ url: plan.url, shots: plan.shots, timeout: plan.timeout }];
+  let failed = false;
+  for (let si = 0; si < segments.length && !failed; si++) {
+    const seg = segments[si];
+    // drop the old page's readout so the next segment cannot match on stale state
+    if (si > 0) await cdp.eval("(function(){const d=document.getElementById('dbg');if(d)d.remove();return 1;})()");
+    await cdp.send('Page.navigate', { url: BASE + seg.url });
+    const t0 = Date.now(), timeout = seg.timeout || plan.timeout || 60000;
+    let idx = 0, lastState = null;
+    while (idx < seg.shots.length && Date.now() - t0 < timeout) {
+      const txt = await cdp.eval("(document.getElementById('dbg')||{}).textContent || ''");
+      let s = null; try { s = JSON.parse(txt); } catch (e) { s = null; }
+      if (s) {
+        lastState = s;
+        if (s.err) { console.log('PAGE ERROR:', s.err); failed = true; break; }
+        const [name, cond, action] = seg.shots[idx];
+        if (cond(s)) {
+          if (action && action.key) {
+            const special = { ArrowRight: 39, ArrowLeft: 37, Space: 32 };
+            const code = special[action.key] ? action.key : 'Key' + action.key.toUpperCase();
+            const vk = special[action.key] || action.key.toUpperCase().charCodeAt(0);
+            await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: action.key, code, windowsVirtualKeyCode: vk });
+            await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: action.key, code, windowsVirtualKeyCode: vk });
+            await sleep(60);
+          }
+          if (action && action.tap) await tap(action.tap[0], action.tap[1]);
+          if (action && action.rotate) { await cdp.send('Emulation.setDeviceMetricsOverride', metrics(action.rotate)); await sleep(400); }
+          if (action && action.check) console.log('CHECK', name, JSON.stringify(await cdp.eval(action.check)));
+          const shot = await cdp.send('Page.captureScreenshot', { format: 'png' });
+          fs.writeFileSync(path.join(OUT, name + '.png'), Buffer.from(shot.result.data, 'base64'));
+          console.log(`${name}: beat=${(s.beat || 0).toFixed(2)} state=${s.state} attempt=${s.attempt} checkpoints=${s.checkpoints} autoplay=${s.autoplay} ending=${s.ending ? s.ending.phase : '-'} audio=${s.audio}`);
+          idx++;
         }
-        if (action && action.tap) await tap(action.tap[0], action.tap[1]);
-        if (action && action.rotate) { await cdp.send('Emulation.setDeviceMetricsOverride', metrics(action.rotate)); await sleep(400); }
-        if (action && action.check) console.log('CHECK', name, JSON.stringify(await cdp.eval(action.check)));
-        const shot = await cdp.send('Page.captureScreenshot', { format: 'png' });
-        fs.writeFileSync(path.join(OUT, name + '.png'), Buffer.from(shot.result.data, 'base64'));
-        console.log(`${name}: beat=${(s.beat || 0).toFixed(2)} state=${s.state} attempt=${s.attempt} checkpoints=${s.checkpoints} barrels=${s.stats && s.stats.barrels} autoplay=${s.autoplay} ending=${s.ending ? s.ending.phase : '-'} audio=${s.audio}`);
-        idx++;
       }
+      await sleep(40);
     }
-    await sleep(40);
+    if (idx < seg.shots.length) { failed = true; console.log('TIMEOUT waiting for', seg.shots[idx][0], 'last state:', JSON.stringify(lastState)); }
+    if (lastState && si === segments.length - 1) console.log('final stats:', JSON.stringify(lastState.stats), 'audio:', lastState.audio);
   }
-  if (idx < plan.shots.length) console.log('TIMEOUT waiting for', plan.shots[idx][0], 'last state:', JSON.stringify(lastState));
-  if (lastState) console.log('final stats:', JSON.stringify(lastState.stats), 'audio:', lastState.audio);
   ws.close(); chrome.kill();
-  process.exit(idx < plan.shots.length ? 1 : 0);
+  process.exit(failed ? 1 : 0);
 })();

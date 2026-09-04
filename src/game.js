@@ -50,6 +50,7 @@
   const Q = new URLSearchParams(location.search);
   G.autoplay = Q.get('autoplay') === '1';
   G.noAudio = Q.get('noaudio') === '1';
+  G.clean = Q.get('clean') === '1'; // store screenshots: no debug tags in the HUD
   if (Q.get('mute') === '1') { G.muted = true; audio.muted = true; }
   if (Q.has('practice')) G.practice = Q.get('practice') === '1';
   if (Q.has('level')) { const i = LEVELS.findIndex((d) => d.id === Q.get('level')); if (i >= 0) G.levelIdx = i; }

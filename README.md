@@ -162,8 +162,11 @@ the frame rate stutters.
   throttle (`PERF_SCALE=1` pins the resolution). `swinstall` registers the service worker and waits
   for the precache; stop the web server and run `offline` on the same `PORT` to prove the game
   loads with no network. Set `PORT=` to run several at once.
-* `node tools/make_icons.js` regenerates `icons/` (home-screen icons and the social preview) from the
-  running game.
+* `node tools/make_icons.js` regenerates `icons/` (home-screen icons and the social preview) and the
+  Play Store feature graphic `store/feature.png` from the running game.
+* `STORE=1 node tools/shoot.js store store` renders the Play Store screenshots (1920x1080: the menu,
+  one moment per mechanic, three endings) into `store/`; `store/listing.md` holds the listing copy and
+  the Play Console form answers. The PNGs are not committed.
 
 Debug URL parameters: `?level=greenland|venezuela|hormuz|canada|panama|moon`, `?autoplay=1`, `?start=<beat>`, `?noaudio=1`, `?mute=1`,
 `?practice=1`, `?debug=1`.

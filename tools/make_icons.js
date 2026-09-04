@@ -64,6 +64,35 @@ const RENDER_ICONS = `(function () {
     fs.writeFileSync(path.join(OUT, name), Buffer.from(url.split(',')[1], 'base64'));
     console.log('wrote', name);
   }
+  // Play Store feature graphic (1024x500, required by the listing)
+  const feature = await cdp.eval(`(function () {
+    const R = window.TD_RENDER, cv = document.createElement('canvas'); cv.width = 1024; cv.height = 500; const c = cv.getContext('2d');
+    const g = c.createLinearGradient(0, 0, 0, 500); g.addColorStop(0, '#05061a'); g.addColorStop(0.6, '#0c1a52'); g.addColorStop(1, '#0033a0');
+    c.fillStyle = g; c.fillRect(0, 0, 1024, 500);
+    let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    c.fillStyle = '#fff'; for (let i = 0; i < 120; i++) { c.globalAlpha = 0.3 + rnd() * 0.7; const s = 1 + rnd() * 2; c.fillRect(rnd() * 1024, rnd() * 330, s, s); } c.globalAlpha = 1;
+    c.fillStyle = 'rgba(200,16,46,0.8)'; for (let i = 0; i < 3; i++) c.fillRect(0, 386 + i * 40, 1024, 20);
+    c.fillStyle = 'rgba(255,255,255,0.35)'; for (let i = 0; i < 3; i++) c.fillRect(0, 406 + i * 40, 1024, 20);
+    c.fillStyle = '#ffd400'; c.fillRect(0, 383, 1024, 4);
+    R.drawTitle(c, 670, 120, 118);
+    c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineJoin = 'round';
+    c.font = 'bold 24px "Segoe UI", Arial, sans-serif'; c.lineWidth = 6; c.strokeStyle = 'rgba(0,0,0,0.8)'; c.fillStyle = '#ffe9a0';
+    c.strokeText('A RHYTHM-RUNNER PARODY', 670, 202); c.fillText('A RHYTHM-RUNNER PARODY', 670, 202);
+    c.font = 'bold 34px Impact, "Arial Black", sans-serif'; c.lineWidth = 8; c.fillStyle = '#fff';
+    c.strokeText('RUN. JUMP. ANNEX. STAY ON THE BEAT.', 670, 252); c.fillText('RUN. JUMP. ANNEX. STAY ON THE BEAT.', 670, 252);
+    c.font = 'bold 19px Impact, "Arial Black", sans-serif'; c.lineWidth = 6; c.fillStyle = '#7dffb0';
+    c.strokeText('SIX LEVELS: GREENLAND · VENEZUELA · HORMUZ · CANADA · PANAMA · THE MOON', 670, 300); c.fillText('SIX LEVELS: GREENLAND · VENEZUELA · HORMUZ · CANADA · PANAMA · THE MOON', 670, 300);
+    c.shadowColor = 'rgba(0,0,0,0.6)'; c.shadowBlur = 18; c.shadowOffsetY = 8;
+    R.drawPose(c, 'thumbs', 185, 488, 430, false);
+    c.shadowColor = 'transparent';
+    c.font = '15px "Segoe UI", Arial, sans-serif'; c.lineWidth = 4; c.fillStyle = 'rgba(255,255,255,0.85)';
+    c.strokeText('Parody. Not affiliated with any person, government or oil company.', 670, 356); c.fillText('Parody. Not affiliated with any person, government or oil company.', 670, 356);
+    return cv.toDataURL('image/png');
+  })()`);
+  const STORE = path.join(__dirname, '..', 'store');
+  fs.mkdirSync(STORE, { recursive: true });
+  fs.writeFileSync(path.join(STORE, 'feature.png'), Buffer.from(feature.split(',')[1], 'base64'));
+  console.log('wrote store/feature.png');
   // social preview: the menu itself, straight from the 960x540 canvas
   const og = await cdp.eval("document.getElementById('game').toDataURL('image/png')");
   fs.writeFileSync(path.join(OUT, 'og.png'), Buffer.from(og.split(',')[1], 'base64'));

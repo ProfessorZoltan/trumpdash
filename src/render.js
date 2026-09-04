@@ -1850,7 +1850,7 @@
     let ly = 58;
     if (G.practice || G.runPractice) { text(ctx, G.practice ? 'PRACTICE MODE' : 'PRACTICE RUN', 16, ly, `bold 12px ${UI_FONT}`, '#7dffb0', 'left', 'rgba(0,0,0,0.8)', 3); ly += 18; }
     if (G.muted) { text(ctx, 'MUTED', 16, ly, `bold 12px ${UI_FONT}`, '#ff9', 'left', 'rgba(0,0,0,0.8)', 3); ly += 18; }
-    if (G.autoplay) text(ctx, 'AUTOPLAY', 16, ly, `bold 12px ${UI_FONT}`, '#ff9', 'left', 'rgba(0,0,0,0.8)', 3);
+    if (G.autoplay && !G.clean) text(ctx, 'AUTOPLAY', 16, ly, `bold 12px ${UI_FONT}`, '#ff9', 'left', 'rgba(0,0,0,0.8)', 3);
     drawCollectibleIcon(ctx, def.collectible.icon, W - 176, 10);
     text(ctx, `${G.stats.coins}/${lv.totalCoins}`, W - 156, 20, `bold 16px ${TITLE_FONT}`, '#fff', 'left', 'rgba(0,0,0,0.8)', 3);
     if (G.stats.combo >= 2 && G.st && !G.st.dead && G.state === 'playing') {
@@ -2204,5 +2204,5 @@
     ctx.restore();
   }
 
-  root.TD_RENDER = { init, draw, palette, drawPose, menuCardRect, loadImage, uiButtons, setScale };
+  root.TD_RENDER = { init, draw, palette, drawPose, drawTitle, menuCardRect, loadImage, uiButtons, setScale };
 })(typeof window !== 'undefined' ? window : globalThis);
