@@ -3,7 +3,7 @@
     "relation": ["delegate_permission/common.handle_all_urls"],
     "target": {
       "namespace": "android_app",
-      "package_name": "com.trumpdash.app",
+      "package_name": "com.trumpdash.www.twa",
       "sha256_cert_fingerprints": [
         "63:8B:FD:E4:89:72:94:DC:CB:0E:94:89:A7:E0:9B:D2:6A:F5:D1:1E:BA:13:AB:DC:30:9A:F5:EF:E3:5C:EC:0A"
       ]

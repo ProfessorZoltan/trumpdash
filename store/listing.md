@@ -102,7 +102,7 @@ same address in the Contact section of `privacy.html`.
 
 ## Android shell notes
 
-- Package name `com.trumpdash.app` (matches `.well-known/assetlinks.json`); it can never change.
+- Package name `com.trumpdash.www.twa` (matches `.well-known/assetlinks.json`); it can never change.
 - The app is signed twice: the upload key (from PWABuilder/Bubblewrap, used for sideloading the test
   APK) and Google's app signing key (Play Console > Setup > App signing). Put BOTH SHA-256
   fingerprints in `assetlinks.json`, or the Play build shows a URL bar.
