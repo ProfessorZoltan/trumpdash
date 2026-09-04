@@ -181,13 +181,14 @@
   function drawBackground(ctx, G, pal, backdrop) {
     ctx.fillStyle = grad(ctx, 'sky|' + pal.top + '|' + pal.bot, 0, 0, 0, GY, [0, pal.top, 1, pal.bot]);
     ctx.fillRect(0, 0, W, GY);
-    ctx.fillStyle = rgba(255, 255, 255, 0.07 * G.beatPulse);
-    ctx.fillRect(0, 0, W, GY);
+    const low = G.lowDetail; // low detail: no full-screen translucent passes, no per-star alpha
+    if (!low) { ctx.fillStyle = rgba(255, 255, 255, 0.07 * G.beatPulse); ctx.fillRect(0, 0, W, GY); }
     const cam = G.camX, t3 = G.time * 3;
     ctx.fillStyle = '#fff';
+    if (low) ctx.globalAlpha = 0.65;
     for (const s of STARS) {
       const sx = ((s.x - cam * 0.05) % 1400 + 1400) % 1400 - 200;
-      ctx.globalAlpha = 0.55 + 0.25 * Math.sin(t3 + s.ph);
+      if (!low) ctx.globalAlpha = 0.55 + 0.25 * Math.sin(t3 + s.ph);
       ctx.fillRect(sx, s.y, 2, 2);
     }
     ctx.globalAlpha = 1;
@@ -245,11 +246,12 @@
   }
   function drawSpaceBackdrop(ctx, G, cam) {
     // dense starfield, twinkling
-    const t2 = G.time * 2;
+    const t2 = G.time * 2, low = G.lowDetail;
     ctx.fillStyle = '#fff';
+    if (low) ctx.globalAlpha = 0.75;
     for (const s of SPACE_STARS) {
       const sx = ((s.x - cam * 0.03) % 1600 + 1600) % 1600 - 200;
-      ctx.globalAlpha = 0.4 + 0.6 * Math.abs(Math.sin(t2 + s.ph));
+      if (!low) ctx.globalAlpha = 0.4 + 0.6 * Math.abs(Math.sin(t2 + s.ph));
       ctx.fillRect(sx, s.y, s.s, s.s);
     }
     ctx.globalAlpha = 1;
@@ -332,9 +334,9 @@
     ctx.fillRect(0, GY - 130, W, 130);
     ctx.fillStyle = 'rgba(255,255,255,0.25)';
     ctx.fillRect(0, GY - 130, W, 1);
-    // glints shimmer with time, so they stay live
+    // glints shimmer with time, so they stay live (skipped in low detail)
     ctx.fillStyle = 'rgba(255,255,255,0.08)';
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < (G.lowDetail ? 0 : 40); i++) {
       const sx = ((rnd(i + 300) * 1200 - cam * 0.25) % 1200 + 1200) % 1200 - 100;
       const sy = GY - 125 + rnd(i + 400) * 100;
       const w = 10 + 30 * rnd(i + 500) * (0.5 + 0.5 * Math.sin(G.time * 2 + i));
@@ -375,14 +377,15 @@
   const AURORA = ['90,220,255', '120,255,190', '150,120,255'];
   function drawArcticBackdrop(ctx, G, cam) {
     // aurora ribbons: animated, so drawn live but with a coarser step and cached gradients
+    const stepX = G.lowDetail ? 48 : 24;
     for (let k = 0; k < 3; k++) {
       const baseY = 70 + k * 45, hue = AURORA[k];
       ctx.beginPath();
-      for (let x = -24; x <= W + 24; x += 24) {
+      for (let x = -24; x <= W + 24; x += stepX) {
         const y = baseY + Math.sin(x * 0.012 + G.time * 0.6 + k * 2 - cam * 0.0008) * 22 + Math.sin(x * 0.03 - G.time * 0.4) * 8;
         if (x === -24) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
-      for (let x = W + 24; x >= -24; x -= 24) {
+      for (let x = W + 24; x >= -24; x -= stepX) {
         const y = baseY + 70 + Math.sin(x * 0.012 + G.time * 0.6 + k * 2 - cam * 0.0008) * 22 + Math.sin(x * 0.025 + G.time * 0.5) * 10;
         ctx.lineTo(x, y);
       }
@@ -444,11 +447,12 @@
       for (let y = GY + 18; y < H; y += 18) ctx.fillRect(0, y, W, 1);
     } else if (style === 'snow') {
       ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      if (G.lowDetail) ctx.globalAlpha = 0.6;
       for (let i = 0; i < 50; i++) {
         const sx = ((rnd(i + 700) * 1000 - cam) % 1000 + 1000) % 1000 - 20;
         const sy = GY + 6 + rnd(i + 800) * 80;
-        const tw = 0.5 + 0.5 * Math.sin(G.time * 5 + i);
-        ctx.globalAlpha = 0.3 + 0.6 * tw; ctx.fillRect(sx, sy, 2, 2);
+        if (!G.lowDetail) ctx.globalAlpha = 0.3 + 0.6 * (0.5 + 0.5 * Math.sin(G.time * 5 + i));
+        ctx.fillRect(sx, sy, 2, 2);
       }
       ctx.globalAlpha = 1;
       ctx.fillStyle = 'rgba(120,170,220,0.25)'; ctx.fillRect(0, GY + 40, W, H - GY - 40);
@@ -478,7 +482,7 @@
       }
     } else if (style === 'ocean') {
       ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 2;
-      for (let row = 0; row < 4; row++) {
+      for (let row = 0; row < (G.lowDetail ? 2 : 4); row++) {
         ctx.beginPath();
         const y0 = GY + 12 + row * 24;
         for (let x = 0; x <= W; x += 8) ctx.lineTo(x, y0 + Math.sin((x + cam * 0.5) * 0.04 + G.time * 2.5 + row) * 4);
@@ -521,7 +525,7 @@
         ctx.fillRect(l, 0, r - l, GY);
         ctx.save(); ctx.beginPath(); ctx.rect(l, 0, r - l, GY); ctx.clip();
         ctx.fillStyle = 'rgba(220,200,255,0.7)';
-        for (let i = 0; i < 40; i++) {
+        for (let i = 0; i < (G.lowDetail ? 14 : 40); i++) {
           const mx = l + rnd(i + 1300) * (r - l), my = GY - 20 - ((rnd(i + 1310) * 400 + G.time * (10 + rnd(i) * 20)) % 400);
           ctx.fillRect(mx, my, 2, 2);
         }
@@ -531,12 +535,10 @@
         ctx.fillStyle = 'rgba(200,180,255,0.6)'; ctx.fillRect(l, 0, 2, GY); ctx.fillRect(r - 2, 0, 2, GY);
       }
     }
-    ctx.fillStyle = grad(ctx, 'ground-shade', 0, GY, 0, H, [0, 'rgba(0,0,0,0)', 1, 'rgba(0,0,0,0.55)']);
-    ctx.fillRect(0, GY, W, H - GY);
+    if (!G.lowDetail) { ctx.fillStyle = grad(ctx, 'ground-shade', 0, GY, 0, H, [0, 'rgba(0,0,0,0)', 1, 'rgba(0,0,0,0.55)']); ctx.fillRect(0, GY, W, H - GY); }
     ctx.fillStyle = pal.gline;
     ctx.fillRect(0, GY - 2, W, 3);
-    ctx.fillStyle = rgba(255, 255, 255, 0.6 * G.beatPulse);
-    ctx.fillRect(0, GY - 2, W, 3);
+    if (!G.lowDetail) { ctx.fillStyle = rgba(255, 255, 255, 0.6 * G.beatPulse); ctx.fillRect(0, GY - 2, W, 3); }
     ctx.fillStyle = 'rgba(0,0,0,0.2)';
     ctx.fillRect(0, GY + 1, W, 6);
     // water gaps
@@ -574,7 +576,7 @@
       const l = z.x0 - cam, r = z.x1 - cam;
       if (r < 0 || l > W) continue;
       ctx.save(); ctx.beginPath(); ctx.rect(Math.max(-1, l), 0, Math.min(W + 1, r) - Math.max(-1, l), CY + 30); ctx.clip();
-      ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(l, 0, r - l, CY - 8);
+      if (!G.lowDetail) { ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.fillRect(l, 0, r - l, CY - 8); }
       ctx.fillStyle = 'rgba(255,255,255,0.55)';
       const start = Math.floor((Math.max(l, -140) + cam) / 90) * 90 - cam;
       for (let x = start; x < Math.min(r, W) + 140; x += 90) {
@@ -2422,7 +2424,7 @@
     const x = 12, y = H - 132, w = 420, h = 120;
     ctx.fillStyle = 'rgba(0,0,0,0.72)'; roundRect(ctx, x, y, w, h, 8); ctx.fill();
     const scale = ctx.canvas ? (ctx.canvas.width / W).toFixed(2) : '?';
-    text(ctx, `${p.fps.toFixed(0)} fps   display ${(p.period * 1000).toFixed(1)} ms   game js ${p.jsMs.toFixed(1)} ms   draw ${(G.drawMs || 0).toFixed(1)} ms   scale ${scale}   dropped ${p.longCount}`, x + 10, y + 14, `11px monospace`, '#fff', 'left');
+    text(ctx, `${p.fps.toFixed(0)} fps  display ${(p.period * 1000).toFixed(1)} ms  js ${p.jsMs.toFixed(1)} ms  draw ${(G.drawMs || 0).toFixed(1)} ms  scale ${scale}  detail ${G.lowDetail ? 'low' : 'high'}  dropped ${p.longCount}`, x + 10, y + 14, `11px monospace`, '#fff', 'left');
     const sx = x + 10, sy = y + 26, sw = w - 20, sh = 28, n = p.dts.length;
     ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(sx, sy, sw, sh);
     for (let i = 0; i < n; i++) {
@@ -2435,8 +2437,10 @@
     const recent = p.long.slice(-4).reverse();
     if (!recent.length) text(ctx, 'no dropped frames yet', x + 10, ly, `11px monospace`, '#cfd3ff', 'left');
     for (const l of recent) {
-      const blame = l.js > l.dt * 0.6 ? (l.draw > l.js * 0.6 ? 'draw' : l.steps > 12 ? 'physics catch-up' : 'game js') : l.tick > 6 ? 'audio scheduling' : 'browser / system';
-      text(ctx, `${l.at.toFixed(1)}s  ${l.dt.toFixed(0)} ms  (js ${l.js.toFixed(1)}, draw ${l.draw.toFixed(1)}, steps ${l.steps}, tick ${l.tick.toFixed(1)})  ${blame}`, x + 10, ly, `11px monospace`, l.js > l.dt * 0.6 ? '#ffd27f' : '#cfd3ff', 'left');
+      // our own work overran the frame if it took most of a display period
+      const ours = l.js >= p.period * 1000 * 0.85;
+      const blame = ours ? (l.draw > l.js * 0.6 ? 'draw' : l.steps > 12 ? 'physics catch-up' : 'game js') : l.tick > 6 ? 'audio scheduling' : 'browser / system';
+      text(ctx, `${l.at.toFixed(1)}s  ${l.dt.toFixed(0)} ms  (js ${l.js.toFixed(1)}, draw ${l.draw.toFixed(1)}, steps ${l.steps}, tick ${l.tick.toFixed(1)})  ${blame}`, x + 10, ly, `11px monospace`, ours ? '#ffd27f' : '#cfd3ff', 'left');
       ly += 14;
     }
   }

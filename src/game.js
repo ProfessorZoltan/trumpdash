@@ -51,6 +51,10 @@
   G.autoplay = Q.get('autoplay') === '1';
   G.noAudio = Q.get('noaudio') === '1';
   G.clean = Q.get('clean') === '1'; // store screenshots: no debug tags in the HUD
+  // Rendering detail: 'auto' drops to the cheaper renderer when the machine cannot hold the display
+  // rate (software canvas, weak GPUs); ?detail=low|high pins it.
+  G.detail = Q.get('detail') === 'low' || Q.get('detail') === 'high' ? Q.get('detail') : 'auto';
+  G.lowDetail = G.detail === 'low';
   if (Q.has('quant')) audio.quant = parseFloat(Q.get('quant')) || 0; // coarse audio clock, like a phone
   if (Q.get('rawclock') === '1') audio.rawClock = true;
   if (Q.get('mute') === '1') { G.muted = true; audio.muted = true; }
@@ -722,14 +726,20 @@
   // Dynamic resolution: a device that cannot hold a smooth frame rate at full density gets the backing
   // store stepped down, never below 1 (today's 960x540). Only ever steps down, so it cannot oscillate.
   let scaleCap = 2, frameAcc = 0, frameN = 0, pendingScale = false;
+  // Adaptive quality. If two seconds of play averaged more than 8% over the display period, first
+  // switch to the low-detail renderer (no rebuild, immediate), then step the backing store down by a
+  // quarter at the next attempt (a resize rebuilds the backdrop tiles, which is itself a hitch): to 1x
+  // normally, and as far as 0.75x when drawing itself is what eats the frame budget.
   function watchFrameRate(rawDt) {
-    if (G.state !== 'playing' || Q.has('scale')) { frameAcc = 0; frameN = 0; return; }
+    if (G.state !== 'playing') { frameAcc = 0; frameN = 0; return; }
     frameAcc += rawDt; frameN++;
     if (frameN < 120) return;
     const avg = frameAcc / frameN; frameAcc = 0; frameN = 0;
-    // resizing the canvas rebuilds the backdrop tiles, which is itself a hitch, so the step is
-    // applied at the next attempt rather than in the middle of a run
-    if (avg > 1 / 45 && scaleCap > 1) { scaleCap = Math.max(1, scaleCap - 0.25); pendingScale = true; }
+    if (avg <= PERF.period * 1.08) return;
+    if (G.detail === 'auto' && !G.lowDetail) { G.lowDetail = true; return; }
+    if (Q.has('scale')) return;
+    const floor = (G.drawMs || 0) > PERF.period * 1000 * 0.5 ? 0.75 : 1;
+    if (scaleCap > floor) { scaleCap = Math.max(floor, scaleCap - 0.25); pendingScale = true; }
   }
   // ---------- frame diagnostics (?perf=1, or the K key) ----------
   // Every frame that ran much longer than the display period is recorded with how much of it was
@@ -809,7 +819,7 @@
     frameCount++;
     watchFrameRate(rawDt);
     if ((frameCount & 63) === 0 && (window.devicePixelRatio || 1) !== lastDpr) fitCanvas(); // moved to another monitor / zoomed
-    if (dbgEl) dbgEl.textContent = JSON.stringify({ frames: frameCount, now, time: G.time, state: G.state, level: G.level && G.level.def.id, beat: G.beat, attempt: G.attempt, checkpoints: G.checkpoints.length, practice: G.practice, runPractice: G.runPractice, best: G.best, pbest: G.pbest, wins: G.wins, pwins: G.pwins, autoplay: !!G.autoplay, drawMs: +(G.drawMs || 0).toFixed(2), perf: { fps: +PERF.fps.toFixed(1), jsMs: +PERF.jsMs.toFixed(2), period: +(PERF.period * 1000).toFixed(1), longCount: PERF.longCount, last: PERF.long.length ? PERF.long[PERF.long.length - 1] : null, tickMax: +(audio.tickMax || 0).toFixed(2) }, camJit: +camJit().toFixed(3), scale: +(canvas.width / C.W).toFixed(2), offsetMs: G.offsetMs, audioOffset: +(audio.offset || 0).toFixed(3), calib: G.calib && { phase: G.calib.phase, n: G.calib.taps.length, measured: +G.calib.measured.toFixed(3) }, touch: G.touch, levelIdx: G.levelIdx, fs: G.fsAvailable, fullscreen: G.fullscreen, x: G.st && G.st.x, flying: !!(G.st && G.st.flying), grav: G.st && G.st.grav, speedMul: G.st && G.st.speedMul, gk: G.st && G.st.gk, song: audio.songTime(), ending: G.ending && { phase: G.ending.phase, trumpIn: G.ending.trumpIn, stamp1: G.ending.stamp1, stamp2: G.ending.stamp2, subSign: G.ending.subSign, arm: G.ending.arm, slide: G.ending.slide, flagY: G.ending.flagY, flag2Y: G.ending.flag2Y, gate: G.ending.gate, ship: G.ending.ship, typed: G.ending.typed, plaqueY: G.ending.plaqueY, jetX: G.ending.jetX, door: G.ending.door, ufoX: G.ending.ufoX, tolls: G.ending.tolls, tankers: G.ending.tankers.length, truckX: G.ending.truckX, truckX0: G.ending.truckX0 }, audio: audio.ctx ? audio.ctx.state + ':' + audio.ctx.currentTime.toFixed(2) + ':step' + audio.nextStep : 'none', stats: G.stats, err: G.lastError || null });
+    if (dbgEl) dbgEl.textContent = JSON.stringify({ frames: frameCount, now, time: G.time, state: G.state, level: G.level && G.level.def.id, beat: G.beat, attempt: G.attempt, checkpoints: G.checkpoints.length, practice: G.practice, runPractice: G.runPractice, best: G.best, pbest: G.pbest, wins: G.wins, pwins: G.pwins, autoplay: !!G.autoplay, drawMs: +(G.drawMs || 0).toFixed(2), detail: G.lowDetail ? 'low' : 'high', perf: { fps: +PERF.fps.toFixed(1), jsMs: +PERF.jsMs.toFixed(2), period: +(PERF.period * 1000).toFixed(1), longCount: PERF.longCount, last: PERF.long.length ? PERF.long[PERF.long.length - 1] : null, tickMax: +(audio.tickMax || 0).toFixed(2) }, camJit: +camJit().toFixed(3), scale: +(canvas.width / C.W).toFixed(2), offsetMs: G.offsetMs, audioOffset: +(audio.offset || 0).toFixed(3), calib: G.calib && { phase: G.calib.phase, n: G.calib.taps.length, measured: +G.calib.measured.toFixed(3) }, touch: G.touch, levelIdx: G.levelIdx, fs: G.fsAvailable, fullscreen: G.fullscreen, x: G.st && G.st.x, flying: !!(G.st && G.st.flying), grav: G.st && G.st.grav, speedMul: G.st && G.st.speedMul, gk: G.st && G.st.gk, song: audio.songTime(), ending: G.ending && { phase: G.ending.phase, trumpIn: G.ending.trumpIn, stamp1: G.ending.stamp1, stamp2: G.ending.stamp2, subSign: G.ending.subSign, arm: G.ending.arm, slide: G.ending.slide, flagY: G.ending.flagY, flag2Y: G.ending.flag2Y, gate: G.ending.gate, ship: G.ending.ship, typed: G.ending.typed, plaqueY: G.ending.plaqueY, jetX: G.ending.jetX, door: G.ending.door, ufoX: G.ending.ufoX, tolls: G.ending.tolls, tankers: G.ending.tankers.length, truckX: G.ending.truckX, truckX0: G.ending.truckX0 }, audio: audio.ctx ? audio.ctx.state + ':' + audio.ctx.currentTime.toFixed(2) + ':step' + audio.nextStep : 'none', stats: G.stats, err: G.lastError || null });
     const f0 = performance.now();
     let drawThis = 0;
     try {

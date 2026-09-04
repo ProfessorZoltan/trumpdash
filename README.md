@@ -131,7 +131,11 @@ times the device pixel ratio (capped at 2x), so text and sprites are crisp on ph
 monitors. The parallax backdrops are baked into tiles the first time they are drawn at a given
 scale and blitted afterwards; gradients are cached; only animated details (twinkle, comet, flames,
 aurora, glints) are drawn live. If a device still cannot hold roughly 45 fps the backing store is
-stepped down to 1x, never lower. `?scale=<n>` pins the scale for testing.
+stepped down. The order is: the low-detail renderer first (no full-screen translucent passes,
+static stars, coarser aurora), then the backing store in quarter steps to 1x, or as far as 0.75x
+when the draw call itself is what eats the frame budget, which is what a software-rendered canvas
+looks like. `?scale=<n>` pins the scale and `?detail=low|high` pins the detail for testing; the
+K overlay shows both.
 
 ## How the rhythm works
 
