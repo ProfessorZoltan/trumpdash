@@ -140,6 +140,12 @@ const PLANS = {
     { url: '?level=greenland&autoplay=1&noaudio=1&clean=1&start=146&debug=1&practice=0', shots: [['s12_map', (s) => s.ending && s.ending.phase === 'slide' && s.ending.slide >= 1]], timeout: 40000 },
     { url: '?level=qatar&autoplay=1&noaudio=1&clean=1&start=62&debug=1&practice=0', shots: [['s13_jet', (s) => s.beat >= 74.6 && s.flying], ['s14_storm', (s) => s.beat >= 129.7]], timeout: 60000 },
   ] },
+  // ---- input timing: synthetic Space presses fired at the exact jump beats through the real key
+  // handlers (timestamped edges), which must all judge PERFECT ----
+  taps: { url: '?level=greenland&noaudio=1&mute=1&start=0&debug=1&practice=0', shots: [
+    ['tp_sched', (s) => s.state === 'playing' && s.beat > 0.5, { check: "(function(){const G=TD_GAME,a=TD_AUDIO_ENGINE,B=TD_CONST.BEAT_SEC,now=a.clock();let n=0;for(const b of G.level.jumpBeats){if(b>40)break;const dt=(a.songStart+b*B-now)*1000;if(dt<0)continue;n++;setTimeout(()=>{window.dispatchEvent(new KeyboardEvent('keydown',{code:'Space',key:' '}));setTimeout(()=>window.dispatchEvent(new KeyboardEvent('keyup',{code:'Space',key:' '})),60);},dt);}return 'scheduled '+n;})()" }],
+    ['tp_done', (s) => (s.beat >= 41 && s.state === 'playing') || s.state === 'dead', { check: "({beat: TD_GAME.beat, state: TD_GAME.state, stats: TD_GAME.stats})" }],
+  ], timeout: 40000 },
   // ---- offline: `swinstall` registers the service worker and waits for the precache (keep the same
   // PORT so the Chrome profile persists), then stop the web server and run `offline` ----
   swinstall: { url: '?sw=1&noaudio=1&mute=1&debug=1', shots: [
@@ -178,12 +184,14 @@ const PLANS = {
   ], timeout: 40000 },
   // render cost: PERF_LEVEL=<id> [THROTTLE=4] node tools/shoot.js perf ; every 2 s logs the smoothed
   // JS time inside draw() and the achieved frame rate (THROTTLE slows the CPU like a weak phone)
-  perf: { url: `?level=${process.env.PERF_LEVEL || 'venezuela'}&autoplay=1&noaudio=1&mute=1&start=20&debug=1${process.env.PERF_SCALE ? '&scale=' + process.env.PERF_SCALE : ''}`, shots: [
+  // PERF_AUDIO=1 keeps the AudioContext (and the music scheduler) running during the measurement
+  perf: { url: `?level=${process.env.PERF_LEVEL || 'venezuela'}&autoplay=1${process.env.PERF_AUDIO ? '' : '&noaudio=1'}&mute=1&start=20&debug=1&perf=1${process.env.PERF_SCALE ? '&scale=' + process.env.PERF_SCALE : ''}`, shots: [
     ['perf', (s) => {
       const now = Date.now();
       if (!PERF.t) { PERF.t = now; PERF.f = s.frames; }
       else if (now - PERF.t >= 2000) {
-        console.log('PERF', s.level, 'beat', +(s.beat || 0).toFixed(1), 'drawMs', s.drawMs, 'fps', ((s.frames - PERF.f) * 1000 / (now - PERF.t)).toFixed(1), 'scale', s.scale);
+        const p = s.perf || {};
+        console.log('PERF', s.level, 'beat', +(s.beat || 0).toFixed(1), 'drawMs', s.drawMs, 'fps', ((s.frames - PERF.f) * 1000 / (now - PERF.t)).toFixed(1), 'scale', s.scale, 'js', p.jsMs, 'dropped', p.longCount, 'tickMax', p.tickMax, 'last', p.last ? `${p.last.dt.toFixed(0)}ms js${p.last.js.toFixed(1)} draw${p.last.draw.toFixed(1)} steps${p.last.steps}` : '-');
         PERF.t = now; PERF.f = s.frames;
       }
       return s.beat >= 60 || (s.state !== 'playing' && s.attempt > 1);
@@ -205,7 +213,7 @@ const PLANS = {
     ['jt_complete', (s) => s.state === 'complete'],
   ], timeout: 75000 },
   probe: { url: process.env.PROBE_URL || '?debug=1', shots: [
-    ['probe', (s) => { if (s.frames % 40 < 3) console.log('PROBE', JSON.stringify({ frames: s.frames, state: s.state, level: s.level, beat: +(s.beat || 0).toFixed(2), attempt: s.attempt, gk: s.gk, song: +(s.song || 0).toFixed(2), err: s.err })); return s.frames > 420; }],
+    ['probe', (s) => { if (s.frames % 40 < 3) console.log('PROBE', JSON.stringify({ frames: s.frames, state: s.state, level: s.level, beat: +(s.beat || 0).toFixed(2), attempt: s.attempt, gk: s.gk, song: +(s.song || 0).toFixed(2), err: s.err })); return process.env.PROBE_BEAT ? s.beat >= parseFloat(process.env.PROBE_BEAT) : s.frames > 420; }],
   ], timeout: 15000 },
   menu: { url: '?debug=1', shots: [
     ['menu_1', (s) => s.state === 'menu'],

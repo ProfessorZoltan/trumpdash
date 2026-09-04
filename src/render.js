@@ -114,6 +114,17 @@
     }
     return g;
   }
+  // rgba strings are built every frame in a few hot spots; quantising the alpha keeps the set small
+  const RGBA = new Map();
+  function rgba(r, g, b, a) {
+    a = Math.round(a * 50) / 50;
+    const k = r + ',' + g + ',' + b + ',' + a;
+    let s = RGBA.get(k);
+    if (!s) { s = 'rgba(' + k + ')'; RGBA.set(k, s); }
+    return s;
+  }
+  // a small pre-rendered sprite (coins, mines, orbs): painted once per scale, centred in a box of `size`
+  function sprite(key, size, paint) { return tile(key, size, 0, size, (c, ox) => { if (ox === 0) paint(c, size / 2, size / 2); }); }
   // A parallax layer is periodic in world x, so it is painted once into an offscreen canvas one period
   // wide (three copies, so shapes that cross the seam wrap) and blitted up to three times per frame.
   // `paint(c, ox)` draws the layer with its origin at logical x = ox. Tiles hold device pixels.
@@ -170,7 +181,7 @@
   function drawBackground(ctx, G, pal, backdrop) {
     ctx.fillStyle = grad(ctx, 'sky|' + pal.top + '|' + pal.bot, 0, 0, 0, GY, [0, pal.top, 1, pal.bot]);
     ctx.fillRect(0, 0, W, GY);
-    ctx.fillStyle = `rgba(255,255,255,${(0.07 * G.beatPulse).toFixed(3)})`;
+    ctx.fillStyle = rgba(255, 255, 255, 0.07 * G.beatPulse);
     ctx.fillRect(0, 0, W, GY);
     const cam = G.camX, t3 = G.time * 3;
     ctx.fillStyle = '#fff';
@@ -354,9 +365,9 @@
         const x = off2 + k * per2 + 200 + i * 480 + rnd(i + 40) * 200;
         if (x < -20 || x > W + 20) continue;
         const fl = 0.6 + 0.4 * Math.sin(G.time * 9 + i * 2);
-        ctx.fillStyle = `rgba(255,140,30,${(0.7 * fl).toFixed(2)})`;
+        ctx.fillStyle = rgba(255, 140, 30, 0.7 * fl);
         ctx.beginPath(); ctx.ellipse(x + 3, GY - 208, 6, 10 + 6 * fl, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = `rgba(255,220,120,${(0.8 * fl).toFixed(2)})`;
+        ctx.fillStyle = rgba(255, 220, 120, 0.8 * fl);
         ctx.beginPath(); ctx.ellipse(x + 3, GY - 206, 3, 6, 0, 0, Math.PI * 2); ctx.fill();
       }
     }
@@ -524,7 +535,7 @@
     ctx.fillRect(0, GY, W, H - GY);
     ctx.fillStyle = pal.gline;
     ctx.fillRect(0, GY - 2, W, 3);
-    ctx.fillStyle = `rgba(255,255,255,${(0.6 * G.beatPulse).toFixed(3)})`;
+    ctx.fillStyle = rgba(255, 255, 255, 0.6 * G.beatPulse);
     ctx.fillRect(0, GY - 2, W, 3);
     ctx.fillStyle = 'rgba(0,0,0,0.2)';
     ctx.fillRect(0, GY + 1, W, 6);
@@ -598,7 +609,7 @@
       }
       ctx.restore();
       ctx.fillStyle = pal.gline; ctx.fillRect(l, CY - 1, r - l, 3);
-      ctx.fillStyle = `rgba(255,255,255,${(0.6 * G.beatPulse).toFixed(3)})`; ctx.fillRect(l, CY - 1, r - l, 3);
+      ctx.fillStyle = rgba(255, 255, 255, 0.6 * G.beatPulse); ctx.fillRect(l, CY - 1, r - l, 3);
       ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(l - 3, 0, 3, CY + 8); ctx.fillRect(r, 0, 3, CY + 8);
     }
   }
@@ -1439,12 +1450,15 @@
     const pulse = G.beatPulse;
     ctx.save();
     ctx.globalAlpha = o.used ? 0.35 : 1;
-    ctx.strokeStyle = `rgba(255,212,0,${0.35 + 0.5 * pulse})`; ctx.lineWidth = 3;
+    ctx.strokeStyle = rgba(255, 212, 0, 0.35 + 0.5 * pulse); ctx.lineWidth = 3;
     ctx.beginPath(); ctx.arc(cx, cy, o.r + 6 + 6 * pulse, 0, Math.PI * 2); ctx.stroke();
-    const g = ctx.createRadialGradient(cx - 6, cy - 6, 2, cx, cy, o.r);
-    g.addColorStop(0, '#fff6b0'); g.addColorStop(0.6, '#ffd400'); g.addColorStop(1, '#c48a00');
-    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, o.r, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = '#5a3a00'; ctx.lineWidth = 2; ctx.stroke();
+    const sp = sprite('spr-orb' + o.r, o.r * 2 + 6, (c, mx, my) => {
+      const g = c.createRadialGradient(mx - 6, my - 6, 2, mx, my, o.r);
+      g.addColorStop(0, '#fff6b0'); g.addColorStop(0.6, '#ffd400'); g.addColorStop(1, '#c48a00');
+      c.fillStyle = g; c.beginPath(); c.arc(mx, my, o.r, 0, Math.PI * 2); c.fill();
+      c.strokeStyle = '#5a3a00'; c.lineWidth = 2; c.stroke();
+    });
+    ctx.drawImage(sp.cv, cx - sp.per / 2, cy - sp.h / 2, sp.per, sp.h);
     text(ctx, o.label, cx, cy - o.r - 14, `bold 11px ${UI_FONT}`, '#fff', 'center', 'rgba(0,0,0,0.8)', 3);
     text(ctx, 'TAP', cx, cy + 1, `bold 11px ${TITLE_FONT}`, '#5a3a00', 'center');
     ctx.restore();
@@ -1472,14 +1486,18 @@
   function drawCoin(ctx, o, sx, G, icon) {
     if (o.got) return;
     const bob = Math.sin(G.time * 4 + o.cx * 0.01) * 4;
-    ctx.fillStyle = 'rgba(255,212,0,0.25)'; ctx.beginPath(); ctx.arc(sx, o.cy + bob, 20, 0, Math.PI * 2); ctx.fill();
     if (icon === 'coin') {
-      const g = ctx.createRadialGradient(sx - 4, o.cy + bob - 4, 2, sx, o.cy + bob, 14);
-      g.addColorStop(0, '#fff2a8'); g.addColorStop(0.7, '#ffcc00'); g.addColorStop(1, '#b8860b');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sx, o.cy + bob, 14, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#7a5a00'; ctx.lineWidth = 2; ctx.stroke();
-      text(ctx, '$', sx, o.cy + bob + 1, `bold 16px ${TITLE_FONT}`, '#7a5a00', 'center');
+      const sp = sprite('spr-coin', 44, (c, mx, my) => {
+        c.fillStyle = 'rgba(255,212,0,0.25)'; c.beginPath(); c.arc(mx, my, 20, 0, Math.PI * 2); c.fill();
+        const g = c.createRadialGradient(mx - 4, my - 4, 2, mx, my, 14);
+        g.addColorStop(0, '#fff2a8'); g.addColorStop(0.7, '#ffcc00'); g.addColorStop(1, '#b8860b');
+        c.fillStyle = g; c.beginPath(); c.arc(mx, my, 14, 0, Math.PI * 2); c.fill();
+        c.strokeStyle = '#7a5a00'; c.lineWidth = 2; c.stroke();
+        text(c, '$', mx, my + 1, `bold 16px ${TITLE_FONT}`, '#7a5a00', 'center');
+      });
+      ctx.drawImage(sp.cv, sx - sp.per / 2, o.cy + bob - sp.h / 2, sp.per, sp.h);
     } else {
+      ctx.fillStyle = 'rgba(255,212,0,0.25)'; ctx.beginPath(); ctx.arc(sx, o.cy + bob, 20, 0, Math.PI * 2); ctx.fill();
       const x = sx - 11, y = o.cy - 14 + bob;
       ctx.fillStyle = '#23232a'; roundRect(ctx, x, y, 22, 28, 5); ctx.fill();
       ctx.fillStyle = '#ffd400'; ctx.fillRect(x, y + 6, 22, 4); ctx.fillRect(x, y + 18, 22, 4);
@@ -1508,13 +1526,16 @@
       ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(cx, cy - 2, r * 0.7, r * 0.35, 0, spin, spin + 2); ctx.stroke();
       return;
     }
-    ctx.strokeStyle = '#111'; ctx.lineWidth = 3;
-    for (let i = 0; i < 8; i++) { const a = (i * Math.PI) / 4 + 0.39; ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * r * 0.7, cy + Math.sin(a) * r * 0.7); ctx.lineTo(cx + Math.cos(a) * (r + 6), cy + Math.sin(a) * (r + 6)); ctx.stroke(); ctx.fillStyle = '#333'; ctx.beginPath(); ctx.arc(cx + Math.cos(a) * (r + 6), cy + Math.sin(a) * (r + 6), 2.5, 0, Math.PI * 2); ctx.fill(); }
-    const g = ctx.createRadialGradient(cx - r * 0.4, cy - r * 0.4, 1, cx, cy, r);
-    g.addColorStop(0, '#6b6b75'); g.addColorStop(1, '#0d0d12');
-    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.stroke();
-    ctx.fillStyle = `rgba(255,40,40,${(0.35 + 0.65 * G.beatPulse).toFixed(2)})`; ctx.beginPath(); ctx.arc(cx, cy, 3.5, 0, Math.PI * 2); ctx.fill();
+    const sp = sprite('spr-mine' + r, r * 2 + 20, (c, mx, my) => {
+      c.strokeStyle = '#111'; c.lineWidth = 3;
+      for (let i = 0; i < 8; i++) { const a = (i * Math.PI) / 4 + 0.39; c.beginPath(); c.moveTo(mx + Math.cos(a) * r * 0.7, my + Math.sin(a) * r * 0.7); c.lineTo(mx + Math.cos(a) * (r + 6), my + Math.sin(a) * (r + 6)); c.stroke(); c.fillStyle = '#333'; c.beginPath(); c.arc(mx + Math.cos(a) * (r + 6), my + Math.sin(a) * (r + 6), 2.5, 0, Math.PI * 2); c.fill(); }
+      const g = c.createRadialGradient(mx - r * 0.4, my - r * 0.4, 1, mx, my, r);
+      g.addColorStop(0, '#6b6b75'); g.addColorStop(1, '#0d0d12');
+      c.fillStyle = g; c.beginPath(); c.arc(mx, my, r, 0, Math.PI * 2); c.fill();
+      c.strokeStyle = '#000'; c.lineWidth = 1.5; c.stroke();
+    });
+    ctx.drawImage(sp.cv, cx - sp.per / 2, cy - sp.h / 2, sp.per, sp.h);
+    ctx.fillStyle = rgba(255, 40, 40, 0.35 + 0.65 * G.beatPulse); ctx.beginPath(); ctx.arc(cx, cy, 3.5, 0, Math.PI * 2); ctx.fill();
   }
   function drawDrone(ctx, o, sx, G) {
     const beat = G.st ? G.st.t / C.BEAT_SEC : G.beat;
@@ -1536,7 +1557,7 @@
     ctx.strokeStyle = '#4a4f5c'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(cx - 24, cy - 6); ctx.lineTo(cx + 24, cy - 6); ctx.stroke();
     ctx.fillStyle = 'rgba(220,230,255,0.6)';
     for (const dx of [-24, 24]) { ctx.beginPath(); ctx.ellipse(cx + dx, cy - 8, 12 * Math.abs(Math.cos(spin + dx)), 2.5, 0, 0, Math.PI * 2); ctx.fill(); }
-    ctx.fillStyle = `rgba(255,50,50,${(0.4 + 0.6 * G.beatPulse).toFixed(2)})`; ctx.beginPath(); ctx.arc(cx, cy + 6, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = rgba(255, 50, 50, 0.4 + 0.6 * G.beatPulse); ctx.beginPath(); ctx.arc(cx, cy + 6, 3, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#111'; ctx.fillRect(cx - 4, cy + 4, 8, 4);
   }
   function drawWheel(ctx, x, y, r, angle) {
@@ -2395,6 +2416,30 @@
     if (!G.touch) text(ctx, 'or press SPACE', W / 2, 474, `11px ${UI_FONT}`, 'rgba(255,255,255,0.6)', 'center');
   }
 
+  // frame diagnostics overlay: fps, frame-time strip (red bars are dropped frames), the last long frames
+  function drawPerf(ctx, G) {
+    const p = G.perf;
+    const x = 12, y = H - 132, w = 420, h = 120;
+    ctx.fillStyle = 'rgba(0,0,0,0.72)'; roundRect(ctx, x, y, w, h, 8); ctx.fill();
+    const scale = ctx.canvas ? (ctx.canvas.width / W).toFixed(2) : '?';
+    text(ctx, `${p.fps.toFixed(0)} fps   display ${(p.period * 1000).toFixed(1)} ms   game js ${p.jsMs.toFixed(1)} ms   draw ${(G.drawMs || 0).toFixed(1)} ms   scale ${scale}   dropped ${p.longCount}`, x + 10, y + 14, `11px monospace`, '#fff', 'left');
+    const sx = x + 10, sy = y + 26, sw = w - 20, sh = 28, n = p.dts.length;
+    ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(sx, sy, sw, sh);
+    for (let i = 0; i < n; i++) {
+      const d = p.dts[i], bh = Math.min(sh, (d / (p.period * 3)) * sh);
+      ctx.fillStyle = d > p.period * 1.6 && d > 0.02 ? '#ff5555' : '#7dffb0';
+      ctx.fillRect(sx + (i / 240) * sw, sy + sh - bh, Math.max(1, sw / 240), bh);
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(sx, sy + sh - sh / 3, sw, 1); // one display period
+    let ly = y + 66;
+    const recent = p.long.slice(-4).reverse();
+    if (!recent.length) text(ctx, 'no dropped frames yet', x + 10, ly, `11px monospace`, '#cfd3ff', 'left');
+    for (const l of recent) {
+      const blame = l.js > l.dt * 0.6 ? (l.draw > l.js * 0.6 ? 'draw' : l.steps > 12 ? 'physics catch-up' : 'game js') : l.tick > 6 ? 'audio scheduling' : 'browser / system';
+      text(ctx, `${l.at.toFixed(1)}s  ${l.dt.toFixed(0)} ms  (js ${l.js.toFixed(1)}, draw ${l.draw.toFixed(1)}, steps ${l.steps}, tick ${l.tick.toFixed(1)})  ${blame}`, x + 10, ly, `11px monospace`, l.js > l.dt * 0.6 ? '#ffd27f' : '#cfd3ff', 'left');
+      ly += 14;
+    }
+  }
   function draw(ctx, G) {
     ctx.save();
     ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0);
@@ -2407,6 +2452,7 @@
       if (G.state === 'menu') { drawMenu(ctx, G); drawButtons(ctx, G); }
       else if (G.state === 'calibrate') { drawCalibrate(ctx, G); drawButtons(ctx, G); }
       else text(ctx, 'LOADING…', W / 2, H / 2, `bold 30px ${TITLE_FONT}`, '#fff', 'center');
+      if (G.perf && G.perf.on) drawPerf(ctx, G);
       ctx.restore();
       return;
     }
@@ -2424,6 +2470,7 @@
     if (G.state === 'paused') drawPaused(ctx, G);
     if (G.state === 'complete') drawComplete(ctx, G);
     drawButtons(ctx, G);
+    if (G.perf && G.perf.on) drawPerf(ctx, G);
     ctx.restore();
   }
 

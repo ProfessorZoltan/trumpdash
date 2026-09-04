@@ -89,6 +89,7 @@ returning players never run a mix of old and new modules.
 | C, or the SYNC chip | Tap-to-the-beat calibration: measures how late your taps arrive and starts the music that much earlier |
 | F, or the ⛶ button on the menu | Fullscreen (on Android this also locks landscape) |
 | H | Show hitboxes |
+| K, or `?perf=1` | Frame diagnostics overlay: fps, a frame-time strip, and the last dropped frames with who to blame (game, audio scheduling, or browser/system) |
 | A | Toggle autoplay (watch mode) |
 
 ### On a phone
@@ -166,7 +167,10 @@ the frame rate stutters. The clock itself is interpolated: `AudioContext.current
 once per hardware audio buffer (20 ms or more on phones), so `audio.js` measures its offset from
 `performance.now()` at every audio tick and the physics target moves once per display frame. The
 world is drawn at the frame's exact time between 1/240 s steps. `?quant=0.02&rawclock=1` reproduces
-the old stepping for comparison; the `jitter` harness plan measures it.
+the old stepping for comparison; the `jitter` harness plan measures it. Presses and releases carry
+the timestamp of their input event and are applied at that song time inside the catch-up loop, so
+a dropped frame delays neither the jump nor its judgement; the `taps` harness plan fires synthetic
+presses on the beat through the real handlers and expects every one to judge PERFECT.
 
 ## Tools
 

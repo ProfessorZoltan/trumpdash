@@ -104,7 +104,24 @@
       const d = buf.getChannelData(0);
       for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
       this.noiseBuf = buf;
+      this.buses = new Map();
       return true;
+    }
+    // One looping noise source per filter setting, kept running; a hit is a single gain node tapped
+    // off it. Fewer nodes per hit means less main-thread work per step and less garbage to collect,
+    // which is where the occasional dropped frame came from.
+    noiseBus(type, freq, q, dest) {
+      const key = type + ':' + freq + ':' + q + ':' + (dest === this.sfxBus ? 's' : 'm');
+      let b = this.buses.get(key);
+      if (!b) {
+        const ctx = this.ctx;
+        const src = ctx.createBufferSource(); src.buffer = this.noiseBuf; src.loop = true;
+        const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+        src.connect(f); src.start();
+        b = { f };
+        this.buses.set(key, b);
+      }
+      return b;
     }
 
     resume() { // 'interrupted' is what iOS reports after a phone call, Siri or an app switch
@@ -132,20 +149,14 @@
       return o;
     }
     noise(t, dur, type, freq, q, dest) {
-      const ctx = this.ctx;
-      const src = ctx.createBufferSource();
-      src.buffer = this.noiseBuf;
-      src.loop = true;
-      const f = ctx.createBiquadFilter();
-      f.type = type;
-      f.frequency.value = freq;
-      f.Q.value = q;
-      const g = ctx.createGain();
-      src.connect(f);
-      f.connect(g);
+      const b = this.noiseBus(type, freq, q, dest);
+      const g = this.ctx.createGain();
+      g.gain.value = 0;
+      b.f.connect(g);
       g.connect(dest);
-      src.start(t);
-      src.stop(t + dur + 0.05);
+      // drop the tap once the hit is over; a connected node would otherwise live forever
+      const ms = Math.max(0, (t + dur + 0.15 - this.ctx.currentTime) * 1000);
+      setTimeout(() => { try { b.f.disconnect(g); g.disconnect(); } catch (e) { /* already gone */ } }, ms);
       return g;
     }
     kick(t, v) {
@@ -382,6 +393,13 @@
       this.timer = setInterval(() => this.tick(), 25);
     }
     tick() {
+      const t0 = performance.now();
+      try { this.tickInner(); } finally {
+        const ms = performance.now() - t0; // how long scheduling a chunk of music held the main thread
+        this.tickMax = Math.max((this.tickMax || 0) * 0.97, ms);
+      }
+    }
+    tickInner() {
       const ctx = this.ctx;
       const STEP = stepSec(), base = this.songStart - this.offset; // the music runs `offset` early (see constructor)
       const horizon = ctx.currentTime + 0.14;

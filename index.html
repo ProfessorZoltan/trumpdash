@@ -24,7 +24,7 @@
 <script>
   // Cache busting. Bump TD_VERSION whenever a JS/CSS file changes so browsers never mix old and
   // new modules. On localhost every load gets a fresh stamp so local edits always show up.
-  window.TD_VERSION = '15';
+  window.TD_VERSION = '16';
   (function () {
     var local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
     var v = local ? String(Date.now()) : window.TD_VERSION;

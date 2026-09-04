@@ -3,7 +3,7 @@
   const C = window.TD_CONST, PHYS = window.TD_PHYSICS, LV = window.TD_LEVEL, R = window.TD_RENDER, SPR = window.TD_SPRITES;
   const LEVELS = window.TD_LEVELS;
   const canvas = document.getElementById('game');
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { alpha: false }); // the game paints every pixel: skip alpha compositing
   const audio = new window.TD_AUDIO.Engine();
   // Regular-mode and practice-mode records are stored separately per level.
   const LS = {
@@ -24,7 +24,7 @@
     showHitboxes: false, touch: !!(window.matchMedia && matchMedia('(pointer: coarse)').matches), touches: new Set(),
     fsAvailable: false, fullscreen: false,
     offsetMs: parseInt(lsGet(LS.offset, '0'), 10) || 0, calib: null, // sync offset (ms, calibrated residual)
-    held: false, beat: 0, beatPulse: 0, time: 0, camX: -C.PLAYER_X, camLock: null,
+    held: false, heldAt: false, inputQ: [], beat: 0, beatPulse: 0, time: 0, camX: -C.PLAYER_X, camLock: null,
     particles: [], floaters: [], shake: 0,
     stats: null, deathMsg: null, deadAt: 0, checkpoint: 0, checkpoints: [], lastCpCheck: -1,
     ending: null, best: {}, wins: {}, pbest: {}, pwins: {}, runPractice: false, lastError: null,
@@ -74,13 +74,14 @@
     startAttempt(0);
   }
   function startAttempt(beat) {
+    if (pendingScale) { pendingScale = false; fitCanvas(); } // a deferred resolution step: never mid-run
     G.attempt++;
     G.st = PHYS.makeState(beat, G.level);
     PHYS.resetObjects(G.level, G.level.xAtBeat(beat));
     G.stats.coins = G.level.objs.reduce((n, o) => n + (o.t === 'coin' && o.got ? 1 : 0), 0);
     if (beat === 0) { G.stats.combo = 0; G.stats.extra = 0; }
     G.state = 'playing';
-    G.held = false;
+    G.held = false; G.heldAt = false; G.inputQ.length = 0;
     G.particles.length = 0; G.floaters.length = 0;
     G.deathMsg = null; G.ending = null; G.camLock = null; G.viewX = null; G.viewY = null;
     G.attemptX = G.level.xAtBeat(beat) + 420;
@@ -139,7 +140,7 @@
   }
   function resume() {
     G.state = 'playing';
-    G.held = false;
+    G.held = false; G.heldAt = false; G.inputQ.length = 0;
     audio.startSong(G.pausedBeat, 0.4);
     if (G.st && G.st.flying) audio.jetStart();
   }
@@ -167,10 +168,10 @@
     G.calib = { phase: 'tap', taps: [], need: CALIB_TAPS, last: null, lastAt: 0, song: 0, measured: 0, auto: 0 };
     G.state = 'calibrate';
   }
-  function calibTap() {
+  function calibTap(ts) {
     const c = G.calib;
     if (!c || c.phase !== 'tap') return;
-    const s = audio.songTime();
+    const s = audio.songTime(ts != null ? ts : performance.now() / 1000);
     if (s < 0.3) return; // count-in
     const n = Math.round(s / C.BEAT_SEC), err = s - n * C.BEAT_SEC;
     if (Math.abs(err) > 0.2) return; // nowhere near a beat: ignore
@@ -549,9 +550,17 @@
     if (G.state === 'playing') {
       const st = G.st;
       const target = audio.songTime(nowSec);
-      let steps = 0, heldNow = G.held;
+      // Presses are applied at the song time they happened, not at the frame they were noticed in,
+      // so a late frame cannot make a press late. Edges older than the simulation (a press that
+      // arrived while the last frame was already being computed) are applied at once.
+      const q = G.inputQ;
+      let qi = 0;
+      while (qi < q.length && q[qi].t <= st.t) { G.heldAt = q[qi].down; qi++; }
+      let steps = 0, heldNow = G.heldAt;
       while (st.t + C.DT <= target && steps < 4000) {
-        let held = G.held;
+        G.lastSteps = steps + 1;
+        while (qi < q.length && q[qi].t <= st.t) { G.heldAt = q[qi].down; qi++; }
+        let held = G.heldAt;
         if (G.autoplay) { // debug: press exactly on every jump beat for 60 ms
           const b = st.t / C.BEAT_SEC, ib = Math.floor(b + 0.0001);
           let cand = null;
@@ -563,6 +572,7 @@
         steps++;
         if (st.dead || st.finished) break;
       }
+      q.splice(0, qi); // edges still in the future stay queued for the next frame
       handleEvents(st);
       G.beat = st.t / C.BEAT_SEC;
       // Draw the world where the player is at the frame's exact time rather than at the last 1/240 s
@@ -611,7 +621,13 @@
 
   // ---------- input ----------
   function selectLevel(i) { G.levelIdx = (i + LEVELS.length) % LEVELS.length; }
-  function press(pt) {
+  // the moment an input event happened, on the performance.now() timeline (seconds)
+  function evTime(e) {
+    const ts = e && typeof e.timeStamp === 'number' ? e.timeStamp : NaN;
+    return ts > 0 && ts < 1e12 ? ts / 1000 : performance.now() / 1000;
+  }
+  function queueEdge(down, ts) { G.inputQ.push({ t: audio.songTime(ts), down }); }
+  function press(pt, ts) {
     if (!G.noAudio) audio.init();
     audio.resume();
     if (pt) { // on-screen buttons first; their geometry lives in render.js so drawing and hit-testing agree
@@ -635,12 +651,12 @@
       }
       case 'complete': quitToMenu(); break;
       case 'paused': resume(); break;
-      case 'playing': G.held = true; break;
+      case 'playing': G.held = true; queueEdge(true, ts != null ? ts : performance.now() / 1000); break;
       case 'dead': G.held = true; break;
-      case 'calibrate': calibTap(); break;
+      case 'calibrate': calibTap(ts); break;
     }
   }
-  function release() { G.held = false; }
+  function release(ts) { G.held = false; if (G.state === 'playing') queueEdge(false, ts != null ? ts : performance.now() / 1000); }
   function canvasPoint(clientX, clientY) {
     const r = canvas.getBoundingClientRect();
     return { x: ((clientX - r.left) / r.width) * C.W, y: ((clientY - r.top) / r.height) * C.H };
@@ -648,7 +664,7 @@
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
     switch (e.code) {
-      case 'Space': case 'ArrowUp': case 'KeyW': case 'Enter': e.preventDefault(); press(null); break;
+      case 'Space': case 'ArrowUp': case 'KeyW': case 'Enter': e.preventDefault(); press(null, evTime(e)); break;
       case 'ArrowLeft': if (G.state === 'menu') selectLevel(G.levelIdx - 1); break;
       case 'ArrowRight': if (G.state === 'menu') selectLevel(G.levelIdx + 1); break;
       case 'Digit1': case 'Digit2': case 'Digit3': case 'Digit4': case 'Digit5': case 'Digit6': case 'Digit7': case 'Digit8': case 'Digit9': if (G.state === 'menu') { const i = parseInt(e.code.slice(5), 10) - 1; if (i < LEVELS.length) selectLevel(i); } break;
@@ -660,23 +676,24 @@
       case 'KeyP': togglePractice(); break;
       case 'KeyF': toggleFullscreen(); break;
       case 'KeyH': G.showHitboxes = !G.showHitboxes; break;
+      case 'KeyK': PERF.on = !PERF.on; break;
       case 'KeyA': G.autoplay = !G.autoplay; break;
     }
   });
-  window.addEventListener('keyup', (e) => { if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW' || e.code === 'Enter') release(); });
-  canvas.addEventListener('mousedown', (e) => { e.preventDefault(); press(canvasPoint(e.clientX, e.clientY)); });
-  window.addEventListener('mouseup', release);
+  window.addEventListener('keyup', (e) => { if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW' || e.code === 'Enter') release(evTime(e)); });
+  canvas.addEventListener('mousedown', (e) => { e.preventDefault(); press(canvasPoint(e.clientX, e.clientY), evTime(e)); });
+  window.addEventListener('mouseup', (e) => release(evTime(e)));
   // Touch: the jump button is "held" while any finger is on the canvas. Every new finger is a press (so
   // taps drive the menus and two-thumb tapping works) and the hold ends only when the last tracked
   // finger lifts, so a resting thumb never cancels a jump.
   canvas.addEventListener('touchstart', (e) => {
     e.preventDefault(); G.touch = true;
-    for (const t of e.changedTouches) { G.touches.add(t.identifier); press(canvasPoint(t.clientX, t.clientY)); }
+    for (const t of e.changedTouches) { G.touches.add(t.identifier); press(canvasPoint(t.clientX, t.clientY), evTime(e)); }
   }, { passive: false });
   const touchUp = (e) => {
     if (e.target === canvas && e.cancelable) e.preventDefault(); // no synthetic clicks; DOM buttons keep theirs
     for (const t of e.changedTouches) G.touches.delete(t.identifier);
-    if (G.touches.size === 0) release();
+    if (G.touches.size === 0) release(evTime(e));
   };
   window.addEventListener('touchend', touchUp, { passive: false });
   window.addEventListener('touchcancel', touchUp, { passive: false });
@@ -704,13 +721,34 @@
   }
   // Dynamic resolution: a device that cannot hold a smooth frame rate at full density gets the backing
   // store stepped down, never below 1 (today's 960x540). Only ever steps down, so it cannot oscillate.
-  let scaleCap = 2, frameAcc = 0, frameN = 0;
+  let scaleCap = 2, frameAcc = 0, frameN = 0, pendingScale = false;
   function watchFrameRate(rawDt) {
     if (G.state !== 'playing' || Q.has('scale')) { frameAcc = 0; frameN = 0; return; }
     frameAcc += rawDt; frameN++;
     if (frameN < 120) return;
     const avg = frameAcc / frameN; frameAcc = 0; frameN = 0;
-    if (avg > 1 / 45 && scaleCap > 1) { scaleCap = Math.max(1, scaleCap - 0.25); fitCanvas(); }
+    // resizing the canvas rebuilds the backdrop tiles, which is itself a hitch, so the step is
+    // applied at the next attempt rather than in the middle of a run
+    if (avg > 1 / 45 && scaleCap > 1) { scaleCap = Math.max(1, scaleCap - 0.25); pendingScale = true; }
+  }
+  // ---------- frame diagnostics (?perf=1, or the K key) ----------
+  // Every frame that ran much longer than the display period is recorded with how much of it was
+  // the game's own JavaScript (physics + draw), so a stutter can be blamed on the game or on the
+  // browser and system (garbage collection, compositor, other tabs). Shown as an overlay.
+  const PERF = { on: Q.get('perf') === '1', dts: [], long: [], longCount: 0, fps: 0, jsMs: 0, period: 1 / 60 };
+  G.perf = PERF;
+  function perfRecord(rawDt, js, draw) {
+    const p = PERF;
+    p.dts.push(rawDt); if (p.dts.length > 240) p.dts.shift();
+    if (p.dts.length >= 30 && (frameCount & 31) === 0) { const s = p.dts.slice().sort((a, b) => a - b); p.period = s[s.length >> 1]; }
+    const inst = 1 / Math.max(1e-3, rawDt);
+    p.fps = p.fps ? p.fps * 0.95 + inst * 0.05 : inst;
+    p.jsMs = p.jsMs * 0.9 + js * 0.1;
+    if (G.state === 'playing' && rawDt > p.period * 1.6 && rawDt > 0.02) {
+      p.long.push({ at: G.time, dt: rawDt * 1000, js, draw, steps: G.lastSteps || 0, tick: audio.tickMax || 0, beat: G.beat });
+      if (p.long.length > 8) p.long.shift();
+      p.longCount++;
+    }
   }
   fitCanvas();
   window.addEventListener('resize', fitCanvas);
@@ -771,13 +809,17 @@
     frameCount++;
     watchFrameRate(rawDt);
     if ((frameCount & 63) === 0 && (window.devicePixelRatio || 1) !== lastDpr) fitCanvas(); // moved to another monitor / zoomed
-    if (dbgEl) dbgEl.textContent = JSON.stringify({ frames: frameCount, now, time: G.time, state: G.state, level: G.level && G.level.def.id, beat: G.beat, attempt: G.attempt, checkpoints: G.checkpoints.length, practice: G.practice, runPractice: G.runPractice, best: G.best, pbest: G.pbest, wins: G.wins, pwins: G.pwins, autoplay: !!G.autoplay, drawMs: +(G.drawMs || 0).toFixed(2), camJit: +camJit().toFixed(3), scale: +(canvas.width / C.W).toFixed(2), offsetMs: G.offsetMs, audioOffset: +(audio.offset || 0).toFixed(3), calib: G.calib && { phase: G.calib.phase, n: G.calib.taps.length, measured: +G.calib.measured.toFixed(3) }, touch: G.touch, levelIdx: G.levelIdx, fs: G.fsAvailable, fullscreen: G.fullscreen, x: G.st && G.st.x, flying: !!(G.st && G.st.flying), grav: G.st && G.st.grav, speedMul: G.st && G.st.speedMul, gk: G.st && G.st.gk, song: audio.songTime(), ending: G.ending && { phase: G.ending.phase, trumpIn: G.ending.trumpIn, stamp1: G.ending.stamp1, stamp2: G.ending.stamp2, subSign: G.ending.subSign, arm: G.ending.arm, slide: G.ending.slide, flagY: G.ending.flagY, flag2Y: G.ending.flag2Y, gate: G.ending.gate, ship: G.ending.ship, typed: G.ending.typed, plaqueY: G.ending.plaqueY, jetX: G.ending.jetX, door: G.ending.door, ufoX: G.ending.ufoX, tolls: G.ending.tolls, tankers: G.ending.tankers.length, truckX: G.ending.truckX, truckX0: G.ending.truckX0 }, audio: audio.ctx ? audio.ctx.state + ':' + audio.ctx.currentTime.toFixed(2) + ':step' + audio.nextStep : 'none', stats: G.stats, err: G.lastError || null });
+    if (dbgEl) dbgEl.textContent = JSON.stringify({ frames: frameCount, now, time: G.time, state: G.state, level: G.level && G.level.def.id, beat: G.beat, attempt: G.attempt, checkpoints: G.checkpoints.length, practice: G.practice, runPractice: G.runPractice, best: G.best, pbest: G.pbest, wins: G.wins, pwins: G.pwins, autoplay: !!G.autoplay, drawMs: +(G.drawMs || 0).toFixed(2), perf: { fps: +PERF.fps.toFixed(1), jsMs: +PERF.jsMs.toFixed(2), period: +(PERF.period * 1000).toFixed(1), longCount: PERF.longCount, last: PERF.long.length ? PERF.long[PERF.long.length - 1] : null, tickMax: +(audio.tickMax || 0).toFixed(2) }, camJit: +camJit().toFixed(3), scale: +(canvas.width / C.W).toFixed(2), offsetMs: G.offsetMs, audioOffset: +(audio.offset || 0).toFixed(3), calib: G.calib && { phase: G.calib.phase, n: G.calib.taps.length, measured: +G.calib.measured.toFixed(3) }, touch: G.touch, levelIdx: G.levelIdx, fs: G.fsAvailable, fullscreen: G.fullscreen, x: G.st && G.st.x, flying: !!(G.st && G.st.flying), grav: G.st && G.st.grav, speedMul: G.st && G.st.speedMul, gk: G.st && G.st.gk, song: audio.songTime(), ending: G.ending && { phase: G.ending.phase, trumpIn: G.ending.trumpIn, stamp1: G.ending.stamp1, stamp2: G.ending.stamp2, subSign: G.ending.subSign, arm: G.ending.arm, slide: G.ending.slide, flagY: G.ending.flagY, flag2Y: G.ending.flag2Y, gate: G.ending.gate, ship: G.ending.ship, typed: G.ending.typed, plaqueY: G.ending.plaqueY, jetX: G.ending.jetX, door: G.ending.door, ufoX: G.ending.ufoX, tolls: G.ending.tolls, tankers: G.ending.tankers.length, truckX: G.ending.truckX, truckX0: G.ending.truckX0 }, audio: audio.ctx ? audio.ctx.state + ':' + audio.ctx.currentTime.toFixed(2) + ':step' + audio.nextStep : 'none', stats: G.stats, err: G.lastError || null });
+    const f0 = performance.now();
+    let drawThis = 0;
     try {
       update(dt, now / 1000);
       const d0 = performance.now(); R.draw(ctx, G);
-      G.drawMs = (G.drawMs || 0) * 0.9 + (performance.now() - d0) * 0.1; // smoothed render cost per frame
+      drawThis = performance.now() - d0;
+      G.drawMs = (G.drawMs || 0) * 0.9 + drawThis * 0.1; // smoothed render cost per frame
       if (dbgEl) trackCam();
     } catch (err) { G.lastError = String(err && err.stack || err); console.error(err); }
+    perfRecord(rawDt, performance.now() - f0, drawThis);
     if (G.lastError) { ctx.fillStyle = '#ff5555'; ctx.font = '12px monospace'; ctx.textAlign = 'left'; G.lastError.split(String.fromCharCode(10)).slice(0, 4).forEach((l, i) => ctx.fillText(l, 10, 100 + i * 14)); }
     requestAnimationFrame(frame);
   }
