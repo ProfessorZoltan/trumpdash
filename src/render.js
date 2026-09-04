@@ -1923,6 +1923,7 @@
       b.push({ id: 'mute', x: 14, y: 150, w: 142, h: 34, label: 'SOUND', value: G.muted ? 'OFF' : 'ON', on: !G.muted });
       b.push({ id: 'sync', x: 14, y: 190, w: 142, h: 34, label: 'SYNC', value: G.offsetMs ? `${G.offsetMs > 0 ? '+' : ''}${G.offsetMs} ms` : 'AUTO', neutral: true });
       if (G.fsAvailable) b.push({ id: 'fullscreen', x: W - 60, y: 8, w: 48, h: 40, icon: G.fullscreen ? 'exitfs' : 'fs' });
+      b.push({ id: 'privacy', x: W - 96, y: H - 36, w: 84, h: 26, label: 'PRIVACY', small: true });
     } else if (s === 'playing' || s === 'dead') {
       b.push({ id: 'pause', x: W - 62, y: 8, w: 50, h: 40, icon: 'pause' });
     } else if (s === 'paused') {
@@ -1963,7 +1964,7 @@
       if (b.value != null) {
         text(ctx, b.label, b.x + 14, cy + 1, `bold 15px ${TITLE_FONT}`, '#fff', 'left');
         text(ctx, b.value, b.x + b.w - 14, cy + 1, `bold 15px ${TITLE_FONT}`, b.neutral ? '#ffe9a0' : b.on ? '#7dffb0' : '#ff9d9d', 'right');
-      } else text(ctx, b.label, cx, cy + 1, `bold 16px ${TITLE_FONT}`, b.primary ? '#1a0a0a' : '#fff', 'center');
+      } else text(ctx, b.label, cx, cy + 1, `bold ${b.small ? 12 : 16}px ${TITLE_FONT}`, b.primary ? '#1a0a0a' : b.small ? '#cfd3ff' : '#fff', 'center');
     }
   }
   function drawOverlayPanel(ctx, x, y, w, h) {

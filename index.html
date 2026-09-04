@@ -24,7 +24,7 @@
 <script>
   // Cache busting. Bump TD_VERSION whenever a JS/CSS file changes so browsers never mix old and
   // new modules. On localhost every load gets a fresh stamp so local edits always show up.
-  window.TD_VERSION = '11';
+  window.TD_VERSION = '12';
   (function () {
     var local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
     var v = local ? String(Date.now()) : window.TD_VERSION;
@@ -44,6 +44,13 @@
         document.body.appendChild(s);
       });
     });
+    // Offline support for the installed app. sw.js is network-first, so online players always get the
+    // latest deploy. On localhost it is only registered with ?sw=1, and ?nosw=1 removes it anywhere.
+    if ('serviceWorker' in navigator) {
+      var q = location.search;
+      if (/[?&]nosw=1/.test(q)) navigator.serviceWorker.getRegistrations().then(function (rs) { rs.forEach(function (r) { r.unregister(); }); });
+      else if (!local || /[?&]sw=1/.test(q)) window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+    }
   })();
 </script>
 </head>

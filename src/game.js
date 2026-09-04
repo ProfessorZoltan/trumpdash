@@ -200,6 +200,7 @@
       case 'mute': toggleMute(); break;
       case 'quit': case 'menu': if (G.state === 'paused' || G.state === 'complete') quitToMenu(); break;
       case 'fullscreen': toggleFullscreen(); break;
+      case 'privacy': location.assign('privacy.html'); break;
     }
   }
 

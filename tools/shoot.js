@@ -119,6 +119,15 @@ const PLANS = {
     ['mr_back', (s) => s.state === 'paused', { rotate: 'landscape' }],
     ['mr_landscape', (s) => s.state === 'paused', { check: "({rotate: getComputedStyle(document.getElementById('rotate')).display, canvas: document.getElementById('game').getBoundingClientRect().toJSON()})" }],
   ], timeout: 30000 },
+  // ---- offline: `swinstall` registers the service worker and waits for the precache (keep the same
+  // PORT so the Chrome profile persists), then stop the web server and run `offline` ----
+  swinstall: { url: '?sw=1&noaudio=1&mute=1&debug=1', shots: [
+    ['sw_ready', (s) => s.state === 'menu', { check: "navigator.serviceWorker.ready.then((r) => 'sw:' + (r.active ? r.active.state : 'none'))" }],
+    ['sw_cached', (s) => s.state === 'menu', { check: "new Promise((res) => { const t = setInterval(async () => { const c = await caches.open('trumpdash-v1'); const k = await c.keys(); if (k.length >= 25) { clearInterval(t); res('cached:' + k.length); } }, 200); setTimeout(() => res('timeout'), 25000); })" }],
+  ], timeout: 40000 },
+  offline: { url: '?noaudio=1&mute=1&debug=1', shots: [
+    ['off_menu', (s) => s.state === 'menu', { check: "({controlled: !!navigator.serviceWorker.controller, online: navigator.onLine, gameJsViaWorker: performance.getEntriesByType('resource').filter((e) => /game\\.js/.test(e.name)).map((e) => e.workerStart > 0)})" }],
+  ], timeout: 30000 },
   // ---- sync calibration: open it from the menu, fire 14 taps 80 ms late via synthetic key events ----
   calib: { url: '?noaudio=1&mute=1&debug=1&practice=0', shots: [
     ['cal_menu', (s) => s.state === 'menu', { tap: [85, 207] }],
@@ -197,7 +206,7 @@ const PLANS = {
 class CDP {
   constructor(ws) { this.ws = ws; this.id = 0; this.pending = new Map(); ws.onmessage = (ev) => { const m = JSON.parse(ev.data); if (m.id && this.pending.has(m.id)) { this.pending.get(m.id)(m); this.pending.delete(m.id); } }; }
   send(method, params) { const id = ++this.id; this.ws.send(JSON.stringify({ id, method, params: params || {} })); return new Promise((res) => this.pending.set(id, res)); }
-  async eval(expr) { const r = await this.send('Runtime.evaluate', { expression: expr, returnByValue: true }); return r.result && r.result.result ? r.result.result.value : undefined; }
+  async eval(expr) { const r = await this.send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true }); return r.result && r.result.result ? r.result.result.value : undefined; }
 }
 
 (async () => {

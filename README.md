@@ -97,6 +97,20 @@ browser reports for the audio device) is stored as the sync offset. Every song i
 that much earlier, so a tap that feels on the beat lands on the physics beat. Recalibrate after
 switching headphones.
 
+### Offline and app-store shell
+
+`sw.js` is a network-first service worker: online it changes nothing (every load still fetches the
+latest deploy), and when the network is gone it serves the last cached copy of the whole game, so
+the home-screen and Play Store versions start without a connection. It registers itself on the
+live site; on localhost only with `?sw=1`, and `?nosw=1` unregisters it anywhere. Bump `CACHE` in
+`sw.js` if the precache list changes.
+
+`privacy.html` is the privacy policy Google Play asks for, linked from the PRIVACY button on the
+menu. Fill in the contact line before submitting. `.well-known/assetlinks.json` is the Digital
+Asset Links file that lets the Android shell own the domain (no URL bar); replace the fingerprint
+placeholder with the SHA-256 of the Play App Signing key that Bubblewrap or PWABuilder generates,
+and keep `package_name` in step with the package you build.
+
 ### Rendering
 
 The canvas keeps its 960x540 coordinate system but its backing store is sized to the CSS size
@@ -145,7 +159,9 @@ the frame rate stutters.
   calibration with synthetic taps) and, with `MOBILE=landscape`, `mobile_menu` and `mobile_rotate`,
   which emulate a phone with touch and walk the touch UI. `PERF_LEVEL=<id> THROTTLE=4 node
   tools/shoot.js perf` logs the JS time spent in draw() and the achieved frame rate under a 4x CPU
-  throttle (`PERF_SCALE=1` pins the resolution). Set `PORT=` to run several at once.
+  throttle (`PERF_SCALE=1` pins the resolution). `swinstall` registers the service worker and waits
+  for the precache; stop the web server and run `offline` on the same `PORT` to prove the game
+  loads with no network. Set `PORT=` to run several at once.
 * `node tools/make_icons.js` regenerates `icons/` (home-screen icons and the social preview) from the
   running game.
 
@@ -171,6 +187,9 @@ src/audio.js             instruments, scheduler and sound effects
 src/render.js            canvas rendering, HUD, level-select menu, truck / toll-booth / map / border-sign / canal-gate / moon-plaque endings
 src/game.js              game loop, input, state machine, ending cutscenes
 manifest.json            home-screen install (landscape, fullscreen)
+sw.js                    network-first service worker (offline fallback)
+privacy.html             privacy policy (linked from the menu)
+.well-known/assetlinks.json  Android app <-> domain link for the Play Store shell
 icons/                   app icons + social preview (generated)
 tools/verify_level.js    completability + timing-window verifier
 tools/shoot.js           headless screenshot harness (desktop or emulated phone)
