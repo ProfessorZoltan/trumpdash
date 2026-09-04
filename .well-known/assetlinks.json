@@ -4,7 +4,9 @@
     "target": {
       "namespace": "android_app",
       "package_name": "com.trumpdash.app",
-      "sha256_cert_fingerprints": ["REPLACE:WITH:THE:SHA256:FINGERPRINT:OF:THE:PLAY:APP:SIGNING:KEY"]
+      "sha256_cert_fingerprints": [
+        "63:8B:FD:E4:89:72:94:DC:CB:0E:94:89:A7:E0:9B:D2:6A:F5:D1:1E:BA:13:AB:DC:30:9A:F5:EF:E3:5C:EC:0A"
+      ]
     }
   }
 ]
