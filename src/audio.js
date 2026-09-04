@@ -26,6 +26,30 @@
       this.userOffset = 0;
       this.offset = 0;
       this.click = false; // metronome mode for the calibration screen
+      // Game clock. AudioContext.currentTime only moves once per hardware audio buffer, which on
+      // phones is 20 ms or more, so used raw it makes the world scroll in steps. sample() re-measures
+      // the offset between it and performance.now() at every audio tick; now() returns the
+      // interpolated audio time, which advances once per display frame.
+      this.off = null; this.lastA = null;
+      this.quant = 0;        // test hook (?quant=<sec>): coarsen the audio clock like a phone buffer
+      this.rawClock = false; // test hook (?rawclock=1): use the raw audio clock, the old behaviour
+    }
+    rawTime() { const a = this.ctx.currentTime; return this.quant ? Math.floor(a / this.quant) * this.quant : a; }
+    sample() {
+      if (!this.ctx) return;
+      const a = this.rawTime();
+      if (a === this.lastA) return;
+      const off = a - performance.now() / 1000;
+      // A read lands somewhere after the tick, so samples are biased low: keep the largest recent
+      // offset and let it decay slowly to follow clock drift; snap on a big jump (suspend / resume).
+      if (this.off == null || off > this.off || off < this.off - 0.1) this.off = off;
+      else this.off -= 0.0005 * (a - this.lastA);
+      this.lastA = a;
+    }
+    now(p) { // p: an optional performance.now()-based timestamp (the frame's), in seconds
+      if (!this.ctx) return p != null ? p : performance.now() / 1000;
+      if (this.rawClock || this.off == null) return this.rawTime();
+      return (p != null ? p : performance.now() / 1000) + this.off;
     }
     autoLatency() { const c = this.ctx; return c ? (c.baseLatency || 0) + (c.outputLatency || 0) : 0; }
     setUserOffset(sec) { this.userOffset = sec || 0; }
@@ -86,7 +110,7 @@
       if (!this.ctx || (this.ctx.state !== 'suspended' && this.ctx.state !== 'interrupted')) return;
       try { const p = this.ctx.resume(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* needs a user gesture; the next press retries */ }
     }
-    clock() { return this.ctx ? this.ctx.currentTime : performance.now() / 1000; }
+    clock() { return this.ctx ? this.rawTime() : performance.now() / 1000; } // raw audio time
     setMuted(m) {
       this.muted = m;
       if (this.ctx) this.master.gain.setTargetAtTime(m ? 0 : this.vol, this.ctx.currentTime, 0.02);
@@ -380,7 +404,7 @@
         g.linearRampToValueAtTime(0, now + 0.08);
       }
     }
-    songTime() { return this.clock() - this.songStart; }
+    songTime(p) { return this.now(p) - this.songStart; }
 
     // ---------- sound effects ----------
     sfx(fn) { if (!this.ctx) return; try { fn(this.ctx, this.ctx.currentTime); } catch (e) { console.warn('sfx failed', e); } }

@@ -51,6 +51,8 @@
   G.autoplay = Q.get('autoplay') === '1';
   G.noAudio = Q.get('noaudio') === '1';
   G.clean = Q.get('clean') === '1'; // store screenshots: no debug tags in the HUD
+  if (Q.has('quant')) audio.quant = parseFloat(Q.get('quant')) || 0; // coarse audio clock, like a phone
+  if (Q.get('rawclock') === '1') audio.rawClock = true;
   if (Q.get('mute') === '1') { G.muted = true; audio.muted = true; }
   if (Q.has('practice')) G.practice = Q.get('practice') === '1';
   if (Q.has('level')) { const i = LEVELS.findIndex((d) => d.id === Q.get('level')); if (i >= 0) G.levelIdx = i; }
@@ -80,7 +82,7 @@
     G.state = 'playing';
     G.held = false;
     G.particles.length = 0; G.floaters.length = 0;
-    G.deathMsg = null; G.ending = null; G.camLock = null;
+    G.deathMsg = null; G.ending = null; G.camLock = null; G.viewX = null; G.viewY = null;
     G.attemptX = G.level.xAtBeat(beat) + 420;
     G.beat = beat;
     audio.startSong(beat, 0.6);
@@ -494,9 +496,10 @@
 
   function update(dt, nowSec) {
     G.time = nowSec;
+    audio.sample();
     if (G.state === 'playing') {
       const st = G.st;
-      const target = audio.songTime();
+      const target = audio.songTime(nowSec);
       let steps = 0;
       while (st.t + C.DT <= target && steps < 4000) {
         let held = G.held;
@@ -512,6 +515,11 @@
       }
       handleEvents(st);
       G.beat = st.t / C.BEAT_SEC;
+      // Draw the world where the player is at the frame's exact time rather than at the last 1/240 s
+      // step: removes a 4 ms sawtooth from the scroll.
+      const lead = Math.max(0, Math.min(C.DT, target - st.t));
+      G.viewX = st.x + C.SPEED * (st.speedMul || 1) * lead;
+      G.viewY = st.onGround ? st.y : st.y + st.vy * lead;
       if (st.gk > 1 && !st.dead && Math.random() < 0.35) { // low gravity: drifting motes around the player
         G.particles.push({ x: st.x + (Math.random() - 0.5) * 80, y: st.y - (st.grav === 1 ? 20 : -20) - Math.random() * 60 * st.grav, vx: (Math.random() - 0.5) * 30, vy: -18 * st.grav, life: 0.9, maxLife: 0.9, size: 1.5 + Math.random() * 1.5, color: 'rgba(220,200,255,0.8)', gravity: 0 });
       }
@@ -527,10 +535,10 @@
     } else if (G.state === 'ending') {
       updateEnding(dt);
     } else if (G.state === 'calibrate' && G.calib) {
-      G.calib.song = audio.songTime();
+      G.calib.song = audio.songTime(nowSec);
     }
     if (G.st && G.state !== 'menu') {
-      let cam = G.st.x - C.PLAYER_X;
+      let cam = (G.viewX != null ? G.viewX : G.st.x) - C.PLAYER_X;
       cam = Math.min(cam, G.level.lengthPx - G.level.def.ending.camOffset);
       if (G.camLock != null) cam = G.camLock;
       G.camX = cam;
@@ -691,17 +699,30 @@
   const dbgEl = Q.has('debug') ? document.body.appendChild(document.createElement('pre')) : null;
   if (dbgEl) dbgEl.id = 'dbg';
   let frameCount = 0;
+  // debug readout: scroll smoothness = std / mean of the camera's per-frame motion (0 = perfectly even)
+  let lastCam = null; const camDeltas = [];
+  function trackCam() {
+    if (G.state === 'playing' && lastCam != null) { camDeltas.push(G.camX - lastCam); if (camDeltas.length > 120) camDeltas.shift(); }
+    lastCam = G.state === 'playing' ? G.camX : null;
+  }
+  function camJit() {
+    if (camDeltas.length < 30) return 0;
+    const m = camDeltas.reduce((a, b) => a + b, 0) / camDeltas.length;
+    if (!m) return 0;
+    return Math.sqrt(camDeltas.reduce((a, b) => a + (b - m) * (b - m), 0) / camDeltas.length) / m;
+  }
   function frame(now) {
     const rawDt = (now - last) / 1000, dt = Math.min(0.05, rawDt);
     last = now;
     frameCount++;
     watchFrameRate(rawDt);
     if ((frameCount & 63) === 0 && (window.devicePixelRatio || 1) !== lastDpr) fitCanvas(); // moved to another monitor / zoomed
-    if (dbgEl) dbgEl.textContent = JSON.stringify({ frames: frameCount, now, time: G.time, state: G.state, level: G.level && G.level.def.id, beat: G.beat, attempt: G.attempt, checkpoints: G.checkpoints.length, practice: G.practice, runPractice: G.runPractice, best: G.best, pbest: G.pbest, wins: G.wins, pwins: G.pwins, autoplay: !!G.autoplay, drawMs: +(G.drawMs || 0).toFixed(2), scale: +(canvas.width / C.W).toFixed(2), offsetMs: G.offsetMs, audioOffset: +(audio.offset || 0).toFixed(3), calib: G.calib && { phase: G.calib.phase, n: G.calib.taps.length, measured: +G.calib.measured.toFixed(3) }, touch: G.touch, levelIdx: G.levelIdx, fs: G.fsAvailable, fullscreen: G.fullscreen, x: G.st && G.st.x, grav: G.st && G.st.grav, speedMul: G.st && G.st.speedMul, gk: G.st && G.st.gk, song: audio.songTime(), ending: G.ending && { phase: G.ending.phase, trumpIn: G.ending.trumpIn, stamp1: G.ending.stamp1, stamp2: G.ending.stamp2, subSign: G.ending.subSign, arm: G.ending.arm, slide: G.ending.slide, flagY: G.ending.flagY, flag2Y: G.ending.flag2Y, gate: G.ending.gate, ship: G.ending.ship, typed: G.ending.typed, plaqueY: G.ending.plaqueY, ufoX: G.ending.ufoX, tolls: G.ending.tolls, tankers: G.ending.tankers.length, truckX: G.ending.truckX, truckX0: G.ending.truckX0 }, audio: audio.ctx ? audio.ctx.state + ':' + audio.ctx.currentTime.toFixed(2) + ':step' + audio.nextStep : 'none', stats: G.stats, err: G.lastError || null });
+    if (dbgEl) dbgEl.textContent = JSON.stringify({ frames: frameCount, now, time: G.time, state: G.state, level: G.level && G.level.def.id, beat: G.beat, attempt: G.attempt, checkpoints: G.checkpoints.length, practice: G.practice, runPractice: G.runPractice, best: G.best, pbest: G.pbest, wins: G.wins, pwins: G.pwins, autoplay: !!G.autoplay, drawMs: +(G.drawMs || 0).toFixed(2), camJit: +camJit().toFixed(3), scale: +(canvas.width / C.W).toFixed(2), offsetMs: G.offsetMs, audioOffset: +(audio.offset || 0).toFixed(3), calib: G.calib && { phase: G.calib.phase, n: G.calib.taps.length, measured: +G.calib.measured.toFixed(3) }, touch: G.touch, levelIdx: G.levelIdx, fs: G.fsAvailable, fullscreen: G.fullscreen, x: G.st && G.st.x, grav: G.st && G.st.grav, speedMul: G.st && G.st.speedMul, gk: G.st && G.st.gk, song: audio.songTime(), ending: G.ending && { phase: G.ending.phase, trumpIn: G.ending.trumpIn, stamp1: G.ending.stamp1, stamp2: G.ending.stamp2, subSign: G.ending.subSign, arm: G.ending.arm, slide: G.ending.slide, flagY: G.ending.flagY, flag2Y: G.ending.flag2Y, gate: G.ending.gate, ship: G.ending.ship, typed: G.ending.typed, plaqueY: G.ending.plaqueY, ufoX: G.ending.ufoX, tolls: G.ending.tolls, tankers: G.ending.tankers.length, truckX: G.ending.truckX, truckX0: G.ending.truckX0 }, audio: audio.ctx ? audio.ctx.state + ':' + audio.ctx.currentTime.toFixed(2) + ':step' + audio.nextStep : 'none', stats: G.stats, err: G.lastError || null });
     try {
       update(dt, now / 1000);
       const d0 = performance.now(); R.draw(ctx, G);
       G.drawMs = (G.drawMs || 0) * 0.9 + (performance.now() - d0) * 0.1; // smoothed render cost per frame
+      if (dbgEl) trackCam();
     } catch (err) { G.lastError = String(err && err.stack || err); console.error(err); }
     if (G.lastError) { ctx.fillStyle = '#ff5555'; ctx.font = '12px monospace'; ctx.textAlign = 'left'; G.lastError.split(String.fromCharCode(10)).slice(0, 4).forEach((l, i) => ctx.fillText(l, 10, 100 + i * 14)); }
     requestAnimationFrame(frame);

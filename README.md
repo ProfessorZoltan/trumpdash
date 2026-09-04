@@ -144,7 +144,11 @@ gets an accent (a bright pluck and a clap) so the track itself tells you when to
 within ±60 ms count as PERFECT, within ±120 ms as GOOD, and build the on-beat combo.
 
 Physics runs on the audio clock at 240 Hz, so the game stays deterministic and in sync even if
-the frame rate stutters.
+the frame rate stutters. The clock itself is interpolated: `AudioContext.currentTime` only advances
+once per hardware audio buffer (20 ms or more on phones), so `audio.js` measures its offset from
+`performance.now()` at every audio tick and the physics target moves once per display frame. The
+world is drawn at the frame's exact time between 1/240 s steps. `?quant=0.02&rawclock=1` reproduces
+the old stepping for comparison; the `jitter` harness plan measures it.
 
 ## Tools
 

@@ -120,6 +120,11 @@ const PLANS = {
     ['mr_back', (s) => s.state === 'paused', { rotate: 'landscape' }],
     ['mr_landscape', (s) => s.state === 'paused', { check: "({rotate: getComputedStyle(document.getElementById('rotate')).display, canvas: document.getElementById('game').getBoundingClientRect().toJSON()})" }],
   ], timeout: 30000 },
+  // ---- scroll smoothness: JIT_Q=0.02 coarsens the audio clock like a phone's buffer, JIT_RAW=1 uses
+  // the raw clock (old behaviour); logs camJit = std/mean of per-frame camera motion, 0 = even ----
+  jitter: { url: `?level=venezuela&autoplay=1&mute=1&start=20&debug=1${process.env.JIT_Q ? '&quant=' + process.env.JIT_Q : ''}${process.env.JIT_RAW ? '&rawclock=1' : ''}`, shots: [
+    ['jitter', (s) => { const now = Date.now(); if (!PERF.t) PERF.t = now; else if (now - PERF.t >= 2000) { console.log('JITTER', s.level, 'beat', +(s.beat || 0).toFixed(1), 'camJit', s.camJit, 'audio', s.audio); PERF.t = now; } return s.beat >= 44; }],
+  ], timeout: 60000 },
   // ---- store screenshots (run with STORE=1): the menu, one moment per mechanic, three endings ----
   store: { segments: [
     { url: '?noaudio=1&clean=1&debug=1&practice=0', shots: [['s01_menu', (s) => s.state === 'menu' && s.frames > 40]], timeout: 20000 },

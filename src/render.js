@@ -1792,7 +1792,8 @@
   function drawPlayer(ctx, G) {
     const st = G.st;
     if (!st || st.dead || G.ending) return;
-    const sx = st.x - G.camX;
+    const px = G.viewX != null ? G.viewX : st.x, py = G.viewY != null ? G.viewY : st.y;
+    const sx = px - G.camX;
     const idx = st.onGround ? Math.floor(st.x / 22) % 8 : 3;
     const fc = runFrames[idx];
     if (!fc) return;
@@ -1806,8 +1807,8 @@
       }
     }
     ctx.save();
-    if (st.grav === 1) { ctx.translate(sx, st.y - 36); ctx.rotate(st.rot + (onIce ? -0.14 : 0)); }
-    else { ctx.translate(sx, st.y + 36); ctx.scale(1, -1); ctx.rotate(st.rot + (onIce ? -0.14 : 0)); }
+    if (st.grav === 1) { ctx.translate(sx, py - 36); ctx.rotate(st.rot + (onIce ? -0.14 : 0)); }
+    else { ctx.translate(sx, py + 36); ctx.scale(1, -1); ctx.rotate(st.rot + (onIce ? -0.14 : 0)); }
     ctx.drawImage(fc, -fc.lw / 2, 36 - fc.lh, fc.lw, fc.lh);
     ctx.restore();
   }
