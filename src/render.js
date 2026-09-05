@@ -1972,7 +1972,8 @@
   }
 
   // The jet, facing right. (x, y) is the centre of the underside; s = scale; rot = nose tilt.
-  function drawJet(ctx, x, y, s, rot, e) {
+  // pilot: draw Trump's face in the cockpit window (false once he has stepped out onto the airstair)
+  function drawJet(ctx, x, y, s, rot, e, pilot) {
     ctx.save(); ctx.translate(x, y); ctx.rotate(rot || 0); ctx.scale(s, s);
     ctx.fillStyle = '#d9d9e2'; ctx.beginPath(); ctx.moveTo(-10, -14); ctx.lineTo(-52, 4); ctx.lineTo(-30, 4); ctx.lineTo(14, -14); ctx.closePath(); ctx.fill();
     ctx.fillStyle = '#8d8d99'; roundRect(ctx, -30, -6, 26, 12, 6); ctx.fill();
@@ -1985,9 +1986,11 @@
     text(ctx, 'QATAR', -40, -46, `bold 8px ${TITLE_FONT}`, '#fff', 'center');
     ctx.fillStyle = '#2b3a55'; for (let i = 0; i < 7; i++) ctx.fillRect(-36 + i * 10, -27, 5, 4);
     ctx.fillStyle = '#8fd3ff'; ctx.beginPath(); ctx.moveTo(40, -30); ctx.lineTo(52, -24); ctx.lineTo(40, -22); ctx.closePath(); ctx.fill();
-    ctx.save(); roundRect(ctx, 26, -30, 16, 12, 3); ctx.clip();
-    drawPose(ctx, 'thumbs', 34, -14, 26, false);
-    ctx.restore();
+    if (pilot !== false) { // the sprite is placed so its head, not its chest, fills the window
+      ctx.save(); roundRect(ctx, 26, -30, 16, 12, 3); ctx.clip();
+      drawPose(ctx, 'thumbs', 34, 4, 36, false);
+      ctx.restore();
+    }
     if (e) {
       drawStamp(ctx, 'AIR FORCE ONE', -38, -46, -0.12, e.stamp1, '#c8102e', 9, null);
       drawStamp(ctx, 'TRUMP LIBRARY', -38, -48, 0.1, e.stamp2, '#ffd400', 10, '#3a2a00');
@@ -2006,7 +2009,7 @@
     ctx.fillStyle = '#ff8c00'; ctx.beginPath(); ctx.moveTo(sx + 384, GY - 120); ctx.lineTo(sx + 420 + ws, GY - 112); ctx.lineTo(sx + 420 + ws, GY - 104); ctx.lineTo(sx + 384, GY - 100); ctx.closePath(); ctx.fill();
     if (e) {
       const s = e.jetScale, jx = e.jetX - G.camX;
-      drawJet(ctx, jx, e.jetY, s, e.jetRot, e);
+      drawJet(ctx, jx, e.jetY, s, e.jetRot, e, !(e.door > 0)); // one Trump: cockpit until the door opens, then the airstair
       if (e.door > 0) {
         const dx = jx + 10 * s, dy = e.jetY - 20 * s;
         ctx.fillStyle = '#c9c9d4'; ctx.beginPath(); ctx.moveTo(dx, dy); ctx.lineTo(dx + 40 * s * e.door, GY); ctx.lineTo(dx + 54 * s * e.door, GY); ctx.lineTo(dx + 14 * s, dy); ctx.closePath(); ctx.fill();
