@@ -119,7 +119,7 @@ live site; on localhost only with `?sw=1`, and `?nosw=1` unregisters it anywhere
 `sw.js` if the precache list changes.
 
 `privacy.html` is the privacy policy Google Play asks for, linked from the PRIVACY button on the
-menu. Fill in the contact line before submitting. `.well-known/assetlinks.json` is the Digital
+menu. `.well-known/assetlinks.json` is the Digital
 Asset Links file that lets the Android shell own the domain (no URL bar). It lists two SHA-256
 fingerprints: the upload key PWABuilder generated and the Play App Signing key from Play Console
 (Test and release > Setup > App integrity). Keep `package_name` in step with the package you build.

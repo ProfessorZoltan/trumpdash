@@ -71,7 +71,7 @@ a title without the name is the safer choice if the listing should survive a com
 **Tags**: rhythm, platformer, parody, arcade, one-tap
 
 **Contact details**: an email address is required and is shown publicly on the listing. Use the
-same address in the Contact section of `privacy.html`.
+same address as the Contact section of `privacy.html`: eric@energycc.co.
 
 **Privacy policy URL**: https://www.trumpdash.com/privacy.html
 
