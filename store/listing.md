@@ -106,6 +106,7 @@ same address in the Contact section of `privacy.html`.
 
 - Package name `com.trumpdash.www.twa` (matches `.well-known/assetlinks.json`); it can never change.
 - The app is signed twice: the upload key (from PWABuilder/Bubblewrap, used for sideloading the test
-  APK) and Google's app signing key (Play Console > Setup > App signing). Put BOTH SHA-256
-  fingerprints in `assetlinks.json`, or the Play build shows a URL bar.
+  APK) and Google's app signing key (Play Console > Test and release > Setup > App integrity).
+  BOTH SHA-256 fingerprints are in `assetlinks.json` (upload key 63:8B:..., app signing key
+  2B:24:...); without the second one the Play build shows a URL bar.
 - Manifest display is `fullscreen` and orientation `landscape`; choose the same in the packager.

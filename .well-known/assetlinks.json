@@ -5,7 +5,8 @@
       "namespace": "android_app",
       "package_name": "com.trumpdash.www.twa",
       "sha256_cert_fingerprints": [
-        "63:8B:FD:E4:89:72:94:DC:CB:0E:94:89:A7:E0:9B:D2:6A:F5:D1:1E:BA:13:AB:DC:30:9A:F5:EF:E3:5C:EC:0A"
+        "63:8B:FD:E4:89:72:94:DC:CB:0E:94:89:A7:E0:9B:D2:6A:F5:D1:1E:BA:13:AB:DC:30:9A:F5:EF:E3:5C:EC:0A",
+        "2B:24:C7:69:38:A8:2F:C8:5B:EC:F3:12:3D:14:D1:AC:34:3A:0D:37:4D:7E:42:7C:C0:44:AC:B7:D2:27:6A:A3"
       ]
     }
   }
