@@ -6,12 +6,19 @@
   const HW = C.PLAYER_W / 2, PH = C.PLAYER_H;
 
   function makeState(beat, level) {
-    return {
+    const st = {
       t: beat * C.BEAT_SEC, x: level && level.xAtBeat ? level.xAtBeat(beat) : beat * C.BEAT_PX, y: C.GROUND_Y, vy: 0, grav: 1,
       onGround: true, ground: null, airT: 0, rot: 0, speedMul: 1, gk: 1, flying: false, heldPrev: false,
       dead: false, deathBy: null, finished: false, oi: 0, events: [],
       prevTop: C.GROUND_Y - PH, prevBot: C.GROUND_Y,
     };
+    // a practice restart inside a flight zone: already in the jet, on the declared path
+    const f = level && level.flyStateAt && flyAt(level, st.x) ? level.flyStateAt(beat) : null;
+    if (f) {
+      st.flying = true; st.onGround = false; st.y = f.y; st.vy = f.vy; st.rot = (f.vy / C.FLY_VMAX) * 0.35;
+      st.prevTop = st.y - C.JET_H; st.prevBot = st.y;
+    }
+    return st;
   }
   // Speed multiplier at a world x (ice zones make the run faster)
   function speedAt(level, x) {

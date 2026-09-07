@@ -98,7 +98,8 @@ function verify(def) {
       const ib = Math.floor(st.t / C.BEAT_SEC);
       if (ib > lastChecked) {
         lastChecked = ib;
-        if (ib >= 4 && ib - last >= 8 && ib <= lv.endBeat - 3 && st.onGround && st.ground === null && st.grav === 1 && L.checkpointOK(lv, ib)) { cps.push(ib); last = ib; }
+        const ok = st.flying ? L.flightCheckpointOK(lv, ib) : (st.onGround && st.ground === null && st.grav === 1 && L.checkpointOK(lv, ib));
+        if (ib >= 4 && ib - last >= 8 && ib <= lv.endBeat - 3 && ok) { cps.push(ib); last = ib; }
       }
     }
   }

@@ -84,7 +84,7 @@ returning players never run a mix of old and new modules.
 | Space / ↑ / W / Enter / click / tap | Start, and jump (hold to keep jumping, like Geometry Dash). In flight: hold to climb, release to sink |
 | Esc, or the ⏸ button top-right | Pause (the pause screen has Resume / Restart / Practice / Sound / Quit buttons) |
 | R | Restart from the beginning |
-| P, or the PRACTICE toggle | Toggle practice mode (auto checkpoints every few bars, all flags stay visible) |
+| P, or the PRACTICE toggle | Toggle practice mode (auto checkpoints every few bars, in flight too, all flags stay visible) |
 | M, or the SOUND toggle | Mute |
 | C, or the SYNC chip | Tap-to-the-beat calibration: measures how late your taps arrive and starts the music that much earlier |
 | F, or the ⛶ button on the menu | Fullscreen (on Android this also locks landscape) |

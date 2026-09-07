@@ -2175,12 +2175,15 @@
     }
     if (G.practice && G.checkpoints) {
       for (let i = 0; i < G.checkpoints.length; i++) {
-        const sx = G.checkpoints[i] - G.camX;
+        const cp = G.checkpoints[i], sx = cp.x - G.camX;
         if (sx < -50 || sx > W + 50) continue;
         const latest = i === G.checkpoints.length - 1;
-        ctx.fillStyle = '#ccc'; ctx.fillRect(sx - 2, GY - 70, 4, 70);
+        // in flight a shorter pennant floats just above where the jet resumes; on the ground the flag stands on the floor
+        const ph = cp.fly ? 44 : 70;
+        const by = cp.fly ? Math.max(CY + ph + 6, cp.y - C.JET_H - 16) : GY;
+        ctx.fillStyle = '#ccc'; ctx.fillRect(sx - 2, by - ph, 4, ph);
         ctx.fillStyle = latest ? '#2ecc71' : '#8fd9a8';
-        ctx.beginPath(); ctx.moveTo(sx + 2, GY - 70); ctx.lineTo(sx + 34, GY - 58); ctx.lineTo(sx + 2, GY - 46); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(sx + 2, by - ph); ctx.lineTo(sx + 34, by - ph + 12); ctx.lineTo(sx + 2, by - ph + 24); ctx.closePath(); ctx.fill();
         ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1.5; ctx.stroke();
       }
     }

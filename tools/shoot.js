@@ -215,6 +215,15 @@ const PLANS = {
   probe: { url: process.env.PROBE_URL || '?debug=1', shots: [
     ['probe', (s) => { if (s.frames % 40 < 3) console.log('PROBE', JSON.stringify({ frames: s.frames, state: s.state, level: s.level, beat: +(s.beat || 0).toFixed(2), attempt: s.attempt, gk: s.gk, song: +(s.song || 0).toFixed(2), err: s.err })); return process.env.PROBE_BEAT ? s.beat >= parseFloat(process.env.PROBE_BEAT) : s.frames > 420; }],
   ], timeout: 15000 },
+  // practice in flight: autoplay off mid-flight (the jet crashes), the restart must resume in the jet
+  // at a flight checkpoint, then autoplay back on to reach the end
+  flycp: { url: '?level=qatar&autoplay=1&noaudio=1&mute=1&start=62&debug=1&practice=1', shots: [
+    ['fc_fly', (s) => s.beat >= 84 && s.attempt === 1, { key: 'a' }],
+    ['fc_dead', (s) => s.state === 'dead', { check: 'JSON.stringify({beat: +TD_GAME.beat.toFixed(2), cps: TD_GAME.checkpoints.map((c) => [Math.round(c.x / 180 * 10) / 10, !!c.fly]), cp: TD_GAME.checkpoint})' }],
+    ['fc_restart', (s) => s.state === 'playing' && s.attempt === 2, { check: 'JSON.stringify({beat: +TD_GAME.beat.toFixed(2), flying: TD_GAME.st.flying, y: Math.round(TD_GAME.st.y), vy: Math.round(TD_GAME.st.vy)})' }],
+    ['fc_on', (s) => s.attempt === 2 && s.state === 'playing' && !s.autoplay, { key: 'a' }],
+    ['fc_later', (s) => s.attempt === 2 && s.beat >= 120],
+  ], timeout: 90000 },
   // a burst of screenshots a few frames apart on flat ground, to eyeball the walk cycle (crop the player)
   walk: { url: '?level=greenland&autoplay=1&noaudio=1&mute=1&start=0&debug=1', shots: [['wk01', (s) => s.beat >= 1.5]]
     .concat(Array.from({ length: 15 }, (_, i) => ['wk' + String(i + 2).padStart(2, '0'), () => true])), timeout: 30000 },

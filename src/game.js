@@ -91,6 +91,7 @@
     G.attemptX = G.level.xAtBeat(beat) + 420;
     G.beat = beat;
     audio.startSong(beat, 0.6);
+    if (G.st.flying) audio.jetStart(); // a restart in flight: no zone entry to start the engine
   }
   function deathKey(o) {
     if (!o) return 'spike';
@@ -283,10 +284,15 @@
     if (ib <= G.lastCpCheck) return;
     G.lastCpCheck = ib;
     if (ib - G.checkpoint < 8 || ib < 4 || ib > G.level.endBeat - 3) return;
-    if (!st.onGround || st.ground !== null || st.grav !== 1) return;
-    if (!LV.checkpointOK(G.level, ib)) return;
+    if (st.flying) {
+      if (!LV.flightCheckpointOK(G.level, ib)) return;
+    } else {
+      if (!st.onGround || st.ground !== null || st.grav !== 1) return;
+      if (!LV.checkpointOK(G.level, ib)) return;
+    }
     G.checkpoint = ib;
-    G.checkpoints.push(G.level.xAtBeat(ib));
+    const f = st.flying ? G.level.flyStateAt(ib) : null; // the marker hangs where the restart resumes
+    G.checkpoints.push({ x: G.level.xAtBeat(ib), y: f ? f.y : C.GROUND_Y, fly: !!f });
     G.floaters.push({ text: 'CHECKPOINT', x: st.x, y: st.y - 90, t0: G.time, dur: 0.8, color: '#7dffb0', size: 16 });
     audio.sfxCheckpoint();
   }

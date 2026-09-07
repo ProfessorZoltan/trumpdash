@@ -60,20 +60,29 @@
     function flyPath(z) {
       const key = z.b0 + ':' + holds.length;
       if (paths.has(key)) return paths.get(key);
-      const ys = [], st = { y: G, vy: 0 };
+      const ys = [], vys = [], st = { y: G, vy: 0 };
       const n = Math.ceil(((z.b1 - z.b0) * C.BEAT_SEC) / C.DT);
       let t = z.b0 * C.BEAT_SEC;
       for (let i = 0; i <= n; i++) {
-        ys.push(st.y);
+        ys.push(st.y); vys.push(st.vy);
         const b = t / C.BEAT_SEC;
         let held = false;
         for (const h of holds) if (b >= h[0] && b < h[1]) { held = true; break; }
         C.flyStep(st, held, C.DT);
         t += C.DT;
       }
-      const p = { ys, t0: z.b0 * C.BEAT_SEC };
+      const p = { ys, vys, t0: z.b0 * C.BEAT_SEC };
       paths.set(key, p);
       return p;
+    }
+    // The jet's state (underside y, vertical speed) on the declared path at a beat inside a flight
+    // zone, or null on the ground. A practice restart in flight resumes from exactly this state,
+    // which is the trajectory every gate was cut around.
+    function flyStateAt(beat) {
+      const z = flyZoneAt(beat);
+      if (!z) return null;
+      const p = flyPath(z), i = Math.max(0, Math.min(p.ys.length - 1, Math.round((beat * C.BEAT_SEC - p.t0) / C.DT)));
+      return { y: p.ys[i], vy: p.vys[i] };
     }
     // jet centre y at a beat inside a flight zone, following the declared holds
     function flyY(beat) { return flyRange(beat, beat).min; }
@@ -271,7 +280,7 @@
     ceilings.sort((a, b) => a.l - b.l);
     const jb = Array.from(new Set(jumpBeats)).sort((a, b) => a - b);
     holds.sort((a, c) => a[0] - c[0]);
-    return { def, objs, deco, gaps, ceilings, zones, lowg, fly, holds, releaseSet: new Set(releaseBeats), xAtBeat, jumpBeats: jb, jumpSet: new Set(jb), endBeat, totalCoins, lengthPx: bx(endBeat) };
+    return { def, objs, deco, gaps, ceilings, zones, lowg, fly, holds, releaseSet: new Set(releaseBeats), xAtBeat, flyStateAt, jumpBeats: jb, jumpSet: new Set(jb), endBeat, totalCoins, lengthPx: bx(endBeat) };
   }
 
   // A checkpoint may sit on an integer beat only if no press is required on that beat or its
@@ -280,6 +289,14 @@
   function checkpointOK(level, beat) {
     return Number.isInteger(beat) && !level.jumpSet.has(beat) && !level.jumpSet.has(beat + 0.5);
   }
+  // In flight the button must be up at the beat and stay up for a full beat: no hold covers it and
+  // none starts within the next beat, so the restart (which resumes on the declared path, sinking)
+  // needs nothing from the player straight away.
+  function flightCheckpointOK(level, beat) {
+    if (!Number.isInteger(beat)) return false;
+    for (const h of level.holds) if (!(h[1] <= beat || h[0] >= beat + 1)) return false;
+    return true;
+  }
 
-  root.TD_LEVEL = { buildLevel, sectionAt, checkpointOK };
+  root.TD_LEVEL = { buildLevel, sectionAt, checkpointOK, flightCheckpointOK };
 })(typeof window !== 'undefined' ? window : globalThis);
