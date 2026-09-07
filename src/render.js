@@ -122,9 +122,9 @@
     }
   }
   // Frame index for a player at world x. The walk sheet plays three steps per two beats (a full
-  // two-step cycle every 4/3 beat, 240 px), phased so a foot-plant lands on every other beat; at
-  // 20 frames that is about 32 frames per second at 128 BPM, brisk but slow enough for the
-  // in-between poses to register. The fallback 8-frame run keeps its old cadence of a cycle per 176 px.
+  // two-step cycle every 4/3 beat, 240 px), phased so a foot-plant lands on every other beat; with
+  // 14 frames that is about 22 frames per second at 128 BPM. The fallback 8-frame run on the pose
+  // sheet keeps its old cadence of a cycle per 176 px.
   function runIndex(x) {
     const n = runFrames.length;
     if (!n) return 0;
