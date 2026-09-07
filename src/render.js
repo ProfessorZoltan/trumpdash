@@ -242,8 +242,7 @@
   function drawBackground(ctx, G, pal, backdrop) {
     ctx.fillStyle = grad(ctx, 'sky|' + pal.top + '|' + pal.bot, 0, 0, 0, GY, [0, pal.top, 1, pal.bot]);
     ctx.fillRect(0, 0, W, GY);
-    const low = G.lowDetail; // low detail: no full-screen translucent passes, no per-star alpha
-    if (!low) { ctx.fillStyle = rgba(255, 255, 255, 0.07 * G.beatPulse); ctx.fillRect(0, 0, W, GY); }
+    const low = G.lowDetail; // low detail: no per-star alpha
     const cam = G.camX, t3 = G.time * 3;
     ctx.fillStyle = '#fff';
     if (low) ctx.globalAlpha = 0.65;
@@ -260,6 +259,22 @@
     else if (backdrop === 'space') drawSpaceBackdrop(ctx, G, cam);
     else if (backdrop === 'desert') drawDesertBackdrop(ctx, G, cam);
     else drawCityBackdrop(ctx, cam);
+    drawHaze(ctx, pal);
+  }
+  // Aerial perspective: everything behind the play field is blended toward the horizon colour, most
+  // strongly at the ground line, so the scenery reads as distant. Obstacles are drawn afterwards in full
+  // colour with dark outlines, and that contrast is the rule that tells the two apart.
+  const HAZE_H = 320;
+  const COLS = new Map();
+  function colRgb(col) { // '#rrggbb' or 'rgb(r,g,b)' -> [r, g, b]
+    let c = COLS.get(col);
+    if (!c) { c = col[0] === '#' ? hexToRgb(col) : col.match(/\d+/g).slice(0, 3).map(Number); COLS.set(col, c); }
+    return c;
+  }
+  function drawHaze(ctx, pal) {
+    const [r, g, b] = colRgb(pal.bot);
+    ctx.fillStyle = grad(ctx, 'haze|' + r + ',' + g + ',' + b, 0, GY - HAZE_H, 0, GY, [0, rgba(r, g, b, 0), 0.45, rgba(r, g, b, 0.28), 1, rgba(r, g, b, 0.5)]);
+    ctx.fillRect(0, GY - HAZE_H, W, HAZE_H);
   }
   function drawDesertBackdrop(ctx, G, cam) {
     // a low sun
@@ -599,7 +614,7 @@
     if (!G.lowDetail) { ctx.fillStyle = grad(ctx, 'ground-shade', 0, GY, 0, H, [0, 'rgba(0,0,0,0)', 1, 'rgba(0,0,0,0.55)']); ctx.fillRect(0, GY, W, H - GY); }
     ctx.fillStyle = pal.gline;
     ctx.fillRect(0, GY - 2, W, 3);
-    if (!G.lowDetail) { ctx.fillStyle = rgba(255, 255, 255, 0.6 * G.beatPulse); ctx.fillRect(0, GY - 2, W, 3); }
+    if (!G.lowDetail) { ctx.fillStyle = rgba(255, 255, 255, 0.35 * G.beatPulse); ctx.fillRect(0, GY - 2, W, 3); }
     ctx.fillStyle = 'rgba(0,0,0,0.2)';
     ctx.fillRect(0, GY + 1, W, 6);
     // water gaps
@@ -672,7 +687,7 @@
       }
       ctx.restore();
       ctx.fillStyle = pal.gline; ctx.fillRect(l, CY - 1, r - l, 3);
-      ctx.fillStyle = rgba(255, 255, 255, 0.6 * G.beatPulse); ctx.fillRect(l, CY - 1, r - l, 3);
+      ctx.fillStyle = rgba(255, 255, 255, 0.35 * G.beatPulse); ctx.fillRect(l, CY - 1, r - l, 3);
       ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(l - 3, 0, 3, CY + 8); ctx.fillRect(r, 0, 3, CY + 8);
     }
   }
@@ -2036,7 +2051,7 @@
     for (const d of lv.deco) {
       const sx = d.x - cam;
       if (sx < -700 || sx > W + 700) continue;
-      if (d.t === 'scene') drawScene(ctx, d.kind, sx, G); else drawSign(ctx, d, sx);
+      if (d.t === 'scene') { ctx.globalAlpha = 0.65; drawScene(ctx, d.kind, sx, G); ctx.globalAlpha = 1; } else drawSign(ctx, d, sx);
     }
     const late = [];
     for (const o of lv.objs) {

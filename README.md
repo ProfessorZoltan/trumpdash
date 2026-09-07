@@ -130,7 +130,9 @@ The canvas keeps its 960x540 coordinate system but its backing store is sized to
 times the device pixel ratio (capped at 2x), so text and sprites are crisp on phones and large
 monitors. The parallax backdrops are baked into tiles the first time they are drawn at a given
 scale and blitted afterwards; gradients are cached; only animated details (twinkle, comet, flames,
-aurora, glints) are drawn live. If a device still cannot hold roughly 45 fps the backing store is
+aurora, glints) are drawn live. The whole backdrop is then blended toward the horizon colour, most
+strongly at the ground line, and set pieces are drawn translucent, so only things the player can
+touch appear in full colour with dark outlines. If a device still cannot hold roughly 45 fps the backing store is
 stepped down. The order is: the low-detail renderer first (no full-screen translucent passes,
 static stars, coarser aurora), then the backing store in quarter steps to 1x, or as far as 0.75x
 when the draw call itself is what eats the frame budget, which is what a software-rendered canvas
