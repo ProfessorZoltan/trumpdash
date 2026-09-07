@@ -24,7 +24,7 @@
   const WALK = {
     SHEET: 'resources/walk_sheet.png',
     SCALE: 72 / 289, // logical px per source px: the standing pose is 72 px tall in the game
-    CYCLE: 176,      // px of travel per full cycle (two steps), the cadence the old 8-frame run had
+    PHASE: 1,        // frame that plays on the beat: the first foot-plant (frame 11 then lands on the next beat)
     AIR: 4,          // frame shown while airborne
     MENU: 3,         // frame used in the level thumbnails
     FRAMES: [
