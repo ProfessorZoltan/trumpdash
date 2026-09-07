@@ -210,7 +210,7 @@ Debug URL parameters: `?level=greenland|venezuela|hormuz|canada|panama|moon|qata
 index.html               page shell
 style.css                layout
 src/constants.js         physics constants, setTempo(bpm)
-src/sprites.js           frame table for resources/sprite_sheet.png
+src/sprites.js           frame tables for resources/sprite_sheet.png (poses) and resources/walk_sheet.png (the walk cycle)
 src/level.js             level builder (beats -> objects, floor or ceiling), checkpoint rule
 src/levels/greenland.js  Greenland: layout, palettes, music, death messages
 src/levels/venezuela.js  Venezuela: layout, palettes, music, death messages
@@ -231,4 +231,5 @@ icons/                   app icons + social preview (generated)
 tools/verify_level.js    completability + timing-window verifier
 tools/shoot.js           headless screenshot harness (desktop or emulated phone)
 tools/make_icons.js      renders icons/ from the sprite sheet
+tools/pack_walk.py       packs a walk-cycle sheet (PNG, or JPEG with a baked checkerboard) into resources/walk_sheet.png in play order and rewrites the WALK table (Pillow, numpy)
 ```

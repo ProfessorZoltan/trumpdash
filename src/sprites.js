@@ -1,8 +1,9 @@
 // Trump Dash - sprite tables.
 // FRAMES are measured from resources/sprite_sheet.png: the poses used by the endings, and the original
-// 8-frame run that is only a fallback now. WALK is the 20-frame walk cycle in resources/walk_sheet.png,
-// packed by tools/pack_walk.py: feet on the bottom edge of every box, `ax` the x of the head inside it
-// (frames are anchored on the head so it holds still while the legs swing).
+// 8-frame run that is only a fallback now. WALK is the walk cycle in resources/walk_sheet.png, packed in
+// play order from resources/sprite_sheet_revised.jpg by tools/pack_walk.py: feet on the bottom edge of
+// every box, `ax` the x of the head inside it (frames are anchored on the head so it holds still while
+// the legs swing).
 (function (root) {
   const FRAMES = {
     thumbs: { x: 41, y: 124, w: 247, h: 384 },
@@ -23,32 +24,20 @@
   };
   const WALK = {
     SHEET: 'resources/walk_sheet.png',
-    SCALE: 72 / 289, // logical px per source px: the standing pose is 72 px tall in the game
-    PHASE: 1,        // frame that plays on the beat: the first foot-plant
-    AIR: 4,          // frame shown while airborne
-    MENU: 3,         // frame used in the level thumbnails
+    SCALE: 72 / 256, // logical px per source px: the standing pose is 72 px tall in the game
+    PHASE: 0,        // frame that plays on the beat: the first foot-plant (the sheet is packed in play order, contact first)
+    AIR: 5,          // frame shown while airborne: the widest stride
+    MENU: 0,         // frame used in the level thumbnails
     FRAMES: [
       // WALK_FRAMES_BEGIN
-      { x: 4, y: 4, w: 141, h: 289, ax: 72.4 },
-      { x: 149, y: 4, w: 167, h: 289, ax: 97.8 },
-      { x: 320, y: 5, w: 167, h: 288, ax: 97.3 },
-      { x: 491, y: 5, w: 166, h: 288, ax: 97.5 },
-      { x: 661, y: 10, w: 166, h: 283, ax: 98.3 },
-      { x: 831, y: 11, w: 165, h: 282, ax: 97.0 },
-      { x: 1000, y: 10, w: 166, h: 283, ax: 97.6 },
-      { x: 1170, y: 11, w: 157, h: 282, ax: 89.4 },
-      { x: 1331, y: 11, w: 162, h: 282, ax: 94.3 },
-      { x: 1497, y: 9, w: 151, h: 284, ax: 84.6 },
-      { x: 1652, y: 4, w: 154, h: 289, ax: 85.4 },
-      { x: 1810, y: 4, w: 168, h: 289, ax: 98.2 },
-      { x: 1982, y: 4, w: 162, h: 289, ax: 91.7 },
-      { x: 2148, y: 5, w: 165, h: 288, ax: 95.8 },
-      { x: 2317, y: 5, w: 162, h: 288, ax: 94.1 },
-      { x: 2483, y: 5, w: 172, h: 288, ax: 103.0 },
-      { x: 2659, y: 5, w: 168, h: 288, ax: 99.5 },
-      { x: 2831, y: 4, w: 171, h: 289, ax: 102.5 },
-      { x: 3006, y: 4, w: 158, h: 289, ax: 88.3 },
-      { x: 3168, y: 4, w: 156, h: 289, ax: 86.3 },
+      { x: 4, y: 7, w: 146, h: 253, ax: 89.3 },
+      { x: 154, y: 10, w: 137, h: 250, ax: 79.9 },
+      { x: 295, y: 8, w: 144, h: 252, ax: 88.0 },
+      { x: 443, y: 8, w: 124, h: 252, ax: 65.6 },
+      { x: 571, y: 8, w: 147, h: 252, ax: 89.1 },
+      { x: 722, y: 9, w: 150, h: 251, ax: 88.6 },
+      { x: 876, y: 7, w: 139, h: 253, ax: 83.0 },
+      { x: 1019, y: 4, w: 139, h: 256, ax: 81.4 },
       // WALK_FRAMES_END
     ],
   };

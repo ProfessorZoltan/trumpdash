@@ -1,15 +1,23 @@
 """Pack a walk-cycle sheet for the game.
 
-    python tools/pack_walk.py <source.png>
+    python tools/pack_walk.py <source.png|jpg> [--skip-rows N] [--order 2,3,4,8,5,6,7,1] [--no-key]
 
-The source is a transparent PNG of the 20 walk frames laid out in rows (as exported from the
-image tool, number labels under the frames are fine: bands shorter than 100 px are ignored).
-Frames are numbered left to right, top to bottom, and play in that order. The script trims each
-frame, scales the second row so its standing pose matches the first row's, and packs the frames in
-one row into resources/walk_sheet.png with the feet on the bottom edge of every box. It then
-rewrites the WALK.FRAMES table in src/sprites.js: x, y, w, h and `ax`, the x of the head (hair
-centroid) inside the box. The renderer anchors frames on the head so it stays still while the legs
-swing, instead of centring each frame's bounding box, which made the whole sprite jitter sideways.
+The source is a sheet of walk frames laid out in rows (number labels under the frames are fine:
+bands shorter than 100 px are ignored). A PNG with transparency is used as is; a JPEG, or any image
+without an alpha channel, has its background keyed out: the flat or checkerboard background is
+flood-filled from the image border through light neutral pixels, so whites inside the character
+(collar, cuffs, eyes) survive because the dark outline fences them off.
+
+--skip-rows N   ignore the first N rows (a row of poses above the walk, say)
+--order a,b,... play order of the walk frames, 1-based, numbered left to right and top to bottom
+                after the skipped rows; an index may repeat. Default: the frames in sheet order.
+--no-key        never key the background, even without an alpha channel
+
+Frames are trimmed, rows after the first are scaled so their tallest frame matches the first row's,
+and the frames are packed in play order into resources/walk_sheet.png in one row with the feet on the
+bottom edge of every box. The WALK.FRAMES table in src/sprites.js is rewritten: x, y, w, h and `ax`,
+the x of the head (hair centroid) inside the box. The renderer anchors frames on the head so it stays
+still while the legs swing, instead of centring each frame's bounding box.
 
 Needs Pillow and numpy.
 """
@@ -23,9 +31,41 @@ SPRITES = os.path.join(ROOT, 'src', 'sprites.js')
 TH = 16   # alpha threshold: faint fringe pixels are ignored (and cleared in the packed sheet)
 PAD = 4   # gutter between packed frames
 
-if len(sys.argv) < 2:
+args = sys.argv[1:]
+if not args or args[0].startswith('-'):
     print(__doc__); sys.exit(2)
-im = Image.open(sys.argv[1]).convert('RGBA')
+src_path, skip_rows, order, key = args[0], 0, None, True
+i = 1
+while i < len(args):
+    if args[i] == '--skip-rows': skip_rows = int(args[i + 1]); i += 2
+    elif args[i] == '--order': order = [int(t) for t in args[i + 1].split(',')]; i += 2
+    elif args[i] == '--no-key': key = False; i += 1
+    else: print('unknown option', args[i]); sys.exit(2)
+
+im = Image.open(src_path)
+has_alpha = im.mode in ('RGBA', 'LA') or 'transparency' in im.info
+im = im.convert('RGBA')
+if key and not has_alpha:
+    # Key the background: light neutral pixels reachable from the border. One iteration of the
+    # loop grows the region by a pixel; a sheet converges in a few hundred.
+    a = np.array(im).astype(int)
+    mx, mn = a[:, :, :3].max(axis=2), a[:, :, :3].min(axis=2)
+    cand = (mx - mn < 22) & (mn > 170)
+    m = np.zeros_like(cand)
+    m[0, :] = cand[0, :]; m[-1, :] = cand[-1, :]; m[:, 0] = cand[:, 0]; m[:, -1] = cand[:, -1]
+    for _ in range(5000):
+        n = m.copy()
+        n[1:, :] |= m[:-1, :]; n[:-1, :] |= m[1:, :]; n[:, 1:] |= m[:, :-1]; n[:, :-1] |= m[:, 1:]
+        n &= cand
+        if (n == m).all(): break
+        m = n
+    # JPEG seams: light, low-saturation pixels touching the background are background too
+    edge = np.zeros_like(m)
+    edge[1:, :] |= m[:-1, :]; edge[:-1, :] |= m[1:, :]; edge[:, 1:] |= m[:, :-1]; edge[:, :-1] |= m[:, 1:]
+    m |= edge & (mx - mn < 40) & (mn > 110)
+    a[:, :, 3] = np.where(m, 0, 255)
+    im = Image.fromarray(a.astype(np.uint8))
+    print('keyed the background: %.1f%% of the image' % (100 * m.mean()))
 a = np.array(im)[:, :, 3]
 
 def runs(mask):
@@ -37,6 +77,8 @@ def runs(mask):
     return out
 
 bands = [r for r in runs((a > TH).any(axis=1)) if r[1] - r[0] > 100]
+print('source %dx%d, %d rows' % (im.size[0], im.size[1], len(bands)))
+bands = bands[skip_rows:]
 crops = []  # (row index, PIL image)
 for ri, (y0, y1) in enumerate(bands):
     band = a[y0:y1]
@@ -46,10 +88,10 @@ for ri, (y0, y1) in enumerate(bands):
         crop = im.crop((x0, y0 + ys[0], x1, y0 + ys[-1] + 1))
         ca = np.array(crop); ca[ca[:, :, 3] <= TH] = 0
         crops.append((ri, Image.fromarray(ca)))
-print('source %dx%d, %d rows, %d frames' % (im.size[0], im.size[1], len(bands), len(crops)))
+print('%d walk frames in %d rows' % (len(crops), len(bands)))
 
 # Rows exported separately come out at slightly different sizes. Scale every row after the first
-# so its tallest frame (the standing pose at the row's end) matches the first row's tallest frame.
+# so its tallest frame matches the first row's tallest frame.
 ref = max(c.size[1] for r, c in crops if r == 0)
 frames = []
 for ri, c in crops:
@@ -58,6 +100,11 @@ for ri, c in crops:
         k = ref / rowmax
         c = c.resize((round(c.size[0] * k), round(c.size[1] * k)), Image.LANCZOS)
     frames.append(c)
+if order:
+    bad = [o for o in order if o < 1 or o > len(frames)]
+    if bad: print('order refers to frames that do not exist:', bad); sys.exit(1)
+    frames = [frames[o - 1] for o in order]
+    print('play order:', ','.join(map(str, order)))
 
 def head_x(c):
     f = np.array(c).astype(int)
