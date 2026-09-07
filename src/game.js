@@ -847,13 +847,19 @@
   window.addEventListener('error', (ev) => { G.lastError = ev.message + ' @ ' + ev.filename + ':' + ev.lineno; });
   R.loadImage('greenland', 'resources/greenland_map.png');
   R.loadImage('florida', 'resources/florida_map.png');
-  const img = new Image();
-  img.onload = () => {
-    R.init(img); G.state = 'menu';
+  // the pose sheet and the walk sheet load in parallel; the menu opens once both have answered
+  const img = new Image(), walk = new Image();
+  let pending = 2;
+  const ready = () => {
+    if (--pending > 0) return;
+    if (img.naturalWidth) R.init(img, walk.naturalWidth ? walk : null);
+    G.state = 'menu';
     if (Q.has('start')) { startGame(LEVELS[G.levelIdx]); const b = parseFloat(Q.get('start')) || 0; if (b > 0) { G.attempt = 0; startAttempt(b); } }
   };
-  img.onerror = () => { G.state = 'menu'; console.error('Could not load sprite sheet'); };
-  img.src = SPR.SHEET;
+  img.onload = ready; walk.onload = ready;
+  img.onerror = () => { console.error('Could not load sprite sheet'); ready(); };
+  walk.onerror = () => { console.error('Could not load walk sheet'); ready(); };
+  img.src = SPR.SHEET; walk.src = SPR.WALK.SHEET;
   requestAnimationFrame(frame);
   window.TD_GAME = G;
   if (Q.has('debug')) window.TD_AUDIO_ENGINE = audio;

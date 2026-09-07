@@ -6,7 +6,7 @@
   const UI_FONT = '"Segoe UI", Arial, sans-serif';
   const SERIF = 'Georgia, "Times New Roman", serif';
 
-  let sheet = null;
+  let sheet = null, walkSheet = null;
   const runFrames = [];
   let SCALE = 1;           // device pixels per logical pixel; the coordinate system stays 960x540 (setScale)
   let TS = 1;              // scale tiles are built at: SCALE, or half of it while compositing the low-detail backdrop
@@ -94,28 +94,41 @@
     ctx.drawImage(s.cv, ax - s.pad, y - s.h / 2, s.w, s.h);
   }
 
-  function init(img) {
+  function init(img, walk) {
     sheet = img;
+    walkSheet = walk || null;
     buildRunFrames();
   }
-  // The run cycle is pre-scaled from the sheet once. Each frame canvas carries its logical size (lw, lh)
-  // while its bitmap is SCALE times larger, so the sprite stays crisp on high-density screens.
+  // The run cycle is pre-scaled once: the 20-frame walk sheet when it loaded, else the old 8-frame run
+  // on the pose sheet. Each frame canvas carries its logical size (lw, lh) and head anchor (ax) while
+  // its bitmap is SCALE times larger, so the sprite stays crisp on high-density screens.
   function buildRunFrames() {
     runFrames.length = 0;
-    if (!sheet) return;
-    for (const f of SPR.FRAMES.run) {
+    const src = walkSheet || sheet;
+    if (!src) return;
+    const frames = walkSheet ? SPR.WALK.FRAMES : SPR.FRAMES.run;
+    const k = walkSheet ? SPR.WALK.SCALE : SPR.RUN_SCALE;
+    for (const f of frames) {
       const cv = document.createElement('canvas');
-      const lw = f.w * SPR.RUN_SCALE, lh = f.h * SPR.RUN_SCALE;
+      const lw = f.w * k, lh = f.h * k;
       cv.width = Math.ceil(lw * SCALE);
       cv.height = Math.ceil(lh * SCALE);
-      cv.lw = lw; cv.lh = lh;
+      cv.lw = lw; cv.lh = lh; cv.ax = (f.ax != null ? f.ax : f.w / 2) * k;
       const c = cv.getContext('2d');
       c.imageSmoothingEnabled = true;
       c.imageSmoothingQuality = 'high';
-      c.drawImage(sheet, f.x, f.y, f.w, f.h, 0, 0, cv.width, cv.height);
+      c.drawImage(src, f.x, f.y, f.w, f.h, 0, 0, cv.width, cv.height);
       runFrames.push(cv);
     }
   }
+  // frame index for a player at world x: one full cycle per WALK.CYCLE px, whatever the frame count
+  function runIndex(x) {
+    const n = runFrames.length;
+    if (!n) return 0;
+    const i = Math.floor(x / (SPR.WALK.CYCLE / n)) % n;
+    return i < 0 ? i + n : i;
+  }
+  function airIndex() { return walkSheet ? SPR.WALK.AIR : 3; }
   // Size the backing store to `scale` device pixels per logical pixel. game.js calls this whenever the
   // canvas's CSS size or the devicePixelRatio changes; 2 is the cap (1920x1080) to bound fill cost.
   function setScale(canvas, scale) {
@@ -2074,8 +2087,7 @@
     const px = G.viewX != null ? G.viewX : st.x, py = G.viewY != null ? G.viewY : st.y;
     const sx = px - G.camX;
     if (st.flying) { drawJet(ctx, sx, py, 1, st.rot, null); return; }
-    const idx = st.onGround ? Math.floor(st.x / 22) % 8 : 3;
-    const fc = runFrames[idx];
+    const fc = runFrames[st.onGround ? runIndex(st.x) : airIndex()];
     if (!fc) return;
     const onIce = st.speedMul > 1 && st.onGround;
     if (onIce) { // speed lines
@@ -2089,7 +2101,7 @@
     ctx.save();
     if (st.grav === 1) { ctx.translate(sx, py - 36); ctx.rotate(st.rot + (onIce ? -0.14 : 0)); }
     else { ctx.translate(sx, py + 36); ctx.scale(1, -1); ctx.rotate(st.rot + (onIce ? -0.14 : 0)); }
-    ctx.drawImage(fc, -fc.lw / 2, 36 - fc.lh, fc.lw, fc.lh);
+    ctx.drawImage(fc, -fc.ax, 36 - fc.lh, fc.lw, fc.lh); // head over the hitbox centre, feet on its bottom edge
     ctx.restore();
   }
 
@@ -2283,7 +2295,7 @@
     while (s.length > 1 && ctx.measureText(s + '…').width > maxW) s = s.slice(0, -1);
     return s.trimEnd() + '…';
   }
-  function drawRunFrame(ctx, x) { const fc = runFrames[2]; if (fc) ctx.drawImage(fc, x, GY - fc.lh, fc.lw, fc.lh); }
+  function drawRunFrame(ctx, x) { const fc = runFrames[walkSheet ? SPR.WALK.MENU : 2]; if (fc) ctx.drawImage(fc, x, GY - fc.lh, fc.lw, fc.lh); }
   function drawThumb(ctx, def, x, y, w, h, G) {
     ctx.save();
     roundRect(ctx, x, y, w, h, 8); ctx.clip();

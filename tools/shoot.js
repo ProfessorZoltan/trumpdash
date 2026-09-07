@@ -215,6 +215,9 @@ const PLANS = {
   probe: { url: process.env.PROBE_URL || '?debug=1', shots: [
     ['probe', (s) => { if (s.frames % 40 < 3) console.log('PROBE', JSON.stringify({ frames: s.frames, state: s.state, level: s.level, beat: +(s.beat || 0).toFixed(2), attempt: s.attempt, gk: s.gk, song: +(s.song || 0).toFixed(2), err: s.err })); return process.env.PROBE_BEAT ? s.beat >= parseFloat(process.env.PROBE_BEAT) : s.frames > 420; }],
   ], timeout: 15000 },
+  // a burst of screenshots a few frames apart on flat ground, to eyeball the walk cycle (crop the player)
+  walk: { url: '?level=greenland&autoplay=1&noaudio=1&mute=1&start=0&debug=1', shots: [['wk01', (s) => s.beat >= 1.5]]
+    .concat(Array.from({ length: 15 }, (_, i) => ['wk' + String(i + 2).padStart(2, '0'), () => true])), timeout: 30000 },
   menu: { url: '?debug=1', shots: [
     ['menu_1', (s) => s.state === 'menu'],
     ['menu_2', (s) => s.state === 'menu', { key: 'ArrowRight' }],
