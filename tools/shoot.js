@@ -215,6 +215,17 @@ const PLANS = {
   probe: { url: process.env.PROBE_URL || '?debug=1', shots: [
     ['probe', (s) => { if (s.frames % 40 < 3) console.log('PROBE', JSON.stringify({ frames: s.frames, state: s.state, level: s.level, beat: +(s.beat || 0).toFixed(2), attempt: s.attempt, gk: s.gk, song: +(s.song || 0).toFixed(2), err: s.err })); return process.env.PROBE_BEAT ? s.beat >= parseFloat(process.env.PROBE_BEAT) : s.frames > 420; }],
   ], timeout: 15000 },
+  // the tutorial: one shot per lesson, then its ending
+  tutorial: { url: '?level=tutorial&autoplay=1&noaudio=1&mute=1&start=0&debug=1', shots: [
+    ['tu_intro', (s) => s.beat >= 3.4], ['tu_jump', (s) => s.beat >= 12.3], ['tu_hold', (s) => s.beat >= 33.4],
+    ['tu_orb', (s) => s.beat >= 40.62], ['tu_pad', (s) => s.beat >= 58.4], ['tu_portal', (s) => s.beat >= 72.5],
+    ['tu_wall', (s) => s.beat >= 73.6], ['tu_back', (s) => s.beat >= 85.6], ['tu_end', (s) => s.state === 'complete'],
+  ], timeout: 110000 },
+  // Greenland's portal walls: the runner should be on the other surface as each wall passes
+  gwalls: { url: '?level=greenland&autoplay=1&noaudio=1&mute=1&start=62&debug=1', shots: [
+    ['gw_1', (s) => s.beat >= 67.35], ['gw_2', (s) => s.beat >= 87.35], ['gw_3', (s) => s.beat >= 107.35], ['gw_4', (s) => s.beat >= 125.35],
+    ['gw_end', (s) => s.state === 'ending' || s.state === 'complete'],
+  ], timeout: 90000 },
   // practice in flight: autoplay off mid-flight (the jet crashes), the restart must resume in the jet
   // at a flight checkpoint, then autoplay back on to reach the end
   flycp: { url: '?level=qatar&autoplay=1&noaudio=1&mute=1&start=62&debug=1&practice=1', shots: [

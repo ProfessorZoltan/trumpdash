@@ -41,6 +41,7 @@
       folketing: ['The Folketing said nej.', 'Denmark has a parliament. Who knew.'],
       inatsisartut: ['Greenland has a parliament too.', 'Inatsisartut objected.'],
       nej: ['Nej means no.', 'A very Danish wall.'],
+      flipwall: ['Take the FLIP-FLOP portal: jump into it.', 'The portal is the only way past that wall.', 'Skipped the portal? Nej.'],
       ice: ['Slipped on the iceberg.', 'Ice, ice, baby.'],
       water: ['Fell in the fjord.', 'That water is 2°C.', 'Man overboard, Arctic edition.'],
       sky: ['Fell into the sky.', 'Gravity is a hoax, apparently.'],
@@ -53,7 +54,11 @@
     },
 
     build(api) {
-      const { S, spikeRaw, blockRaw, OVER, P, DROP, O, PAD, COIN, GJ, FLIP, SIGN, SCENE, GOAL, bx } = api;
+      const { S, spikeRaw, blockRaw, OVER, P, DROP, O, PAD, COIN, GJ, FLIP, SIGN, SCENE, GOAL, bx, B, CY } = api;
+      // After every portal a five-block wall stands on the surface you just left: too tall to jump,
+      // so the only way past is through the portal, running along the other surface.
+      const floorWall = (beat) => blockRaw(bx(beat) - B / 2, 1, 5, 0, 'flipwall');
+      const ceilWall = (beat) => api.slabRaw(bx(beat) - B / 2, 1, CY, CY + 5 * B, 'flipwall');
       // ================= INTRO (bars 0-3): Nuuk =================
       SCENE(1.0, 'nuuk');
       SIGN(2.6, 'NUUK, GREENLAND', 'not for sale');
@@ -79,12 +84,14 @@
       blockRaw(bx(64) + 75, 1, 3, 0, 'nej', 'NEJ');
       SIGN(65.4, 'FLIP-FLOP AHEAD', 'the map turns over');
       FLIP(66, 'FLIP-FLOP');
+      floorWall(67.3);
       S(68); S(70); S(72); COIN(72.4, 130); S(74); S(76);
       O(76.5, 120, 'DEAL'); spikeRaw(76.74, 4, 0, true);
       S(78); S(80);
       OVER(82, 'inatsisartut', 'INATSISARTUT');
       S(84);
       FLIP(86, 'FLIP-FLOP');
+      ceilWall(87.3);
       // ================= BREAKDOWN (bars 22-25): iceberg alley =================
       SIGN(88.3, 'ICEBERG ALLEY', 'mind the fjord');
       SCENE(91, 'icebergs');
@@ -97,12 +104,14 @@
       // ================= DROP 2 (bars 26-31): upside down again =================
       S(104);
       FLIP(106, 'FLIP-FLOP');
+      floorWall(107.3);
       S(108); S(110); S(111); S(113); S(114);
       PAD(116, 'EXECUTIVE ORDER');
       api.slabRaw(bx(116) + 75, 1, api.CY, api.CY + 120, 'nej', 'NEJ');
       S(118); O(118.5, 120, 'DEAL'); spikeRaw(118.74, 4, 0, true);
       S(120); S(121); S(122);
       FLIP(124, 'FLIP-FLOP');
+      ceilWall(125.3);
       // ================= FINALE (bars 32-37): the big map =================
       SIGN(126.5, 'GREENLAND', '2.1 million km²');
       S(128); S(130, 1, 'bear'); S(132); S(133); S(134); S(136); COIN(136.4, 130);

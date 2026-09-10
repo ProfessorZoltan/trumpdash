@@ -7,7 +7,8 @@ main menu.
 bears, a **NOT FOR SALE** sign, the Danish **Folketing**, and a **NEJ** wall cleared with the
 **PURCHASE OFFER** pad. Then the **FLIP-FLOP** portal turns gravity upside down and you run along
 the underside of the ice, past **Inatsisartut** (Greenland's parliament), before flipping back
-for iceberg alley. It ends at a giant map: **(DENMARK)** gets stamped **U.S.A.**, then **TRUMP**,
+for iceberg alley. A **TAKE THE PORTAL** wall too tall to jump stands after every portal, so the
+portal is the only way past. It ends at a giant map: **(DENMARK)** gets stamped **U.S.A.**, then **TRUMP**,
 and the island slides across the screen to sit next to Florida.
 
 **Level 2 — VENEZUELA (Hard, 128 BPM).** Run a pixel-art Trump from Washington, D.C. to
@@ -80,7 +81,8 @@ returning players never run a mix of old and new modules.
 
 | Key | Action |
 | --- | --- |
-| ← → / 1–6 / click a card | Choose a level on the menu |
+| ← → / 1–7 / click a card | Choose a level on the menu |
+| T, or the HOW TO PLAY button | The optional tutorial: a two-minute level that teaches taps on the clap, holding, the orb double jump, launch pads and the gravity portals, with hint death messages |
 | Space / ↑ / W / Enter / click / tap | Start, and jump (hold to keep jumping, like Geometry Dash). In flight: hold to climb, release to sink |
 | Esc, or the ⏸ button top-right | Pause (the pause screen has Resume / Restart / Practice / Sound / Quit buttons) |
 | R | Restart from the beginning |
@@ -219,6 +221,7 @@ src/levels/canada.js     The 51st State: layout, palettes, music, death messages
 src/levels/panama.js     Panama Canal: layout, palettes, music, death messages
 src/levels/moon.js       The Moon: layout, palettes, music, death messages
 src/levels/qatar.js      Qatari Jet: layout (on foot, then flight), palettes, music, death messages
+src/levels/tutorial.js   HOW TO PLAY: the optional tutorial (hidden from the cards, opened from the menu button)
 src/physics.js           deterministic player physics + collisions (spikes, blocks, mines, drones, water, gravity flip, ice speed zones, lock lifts, low gravity)
 src/audio.js             instruments, scheduler and sound effects
 src/render.js            canvas rendering, HUD, level-select menu, truck / toll-booth / map / border-sign / canal-gate / moon-plaque endings

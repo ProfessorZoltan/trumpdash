@@ -1,7 +1,9 @@
 // Trump Dash - game loop, input, state machine, level select, ending cutscenes
 (function () {
   const C = window.TD_CONST, PHYS = window.TD_PHYSICS, LV = window.TD_LEVEL, R = window.TD_RENDER, SPR = window.TD_SPRITES;
-  const LEVELS = window.TD_LEVELS;
+  const ALL_LEVELS = window.TD_LEVELS;
+  const LEVELS = ALL_LEVELS.filter((d) => !d.hidden);          // the numbered cards on the menu
+  const TUTORIAL = ALL_LEVELS.find((d) => d.hidden) || null;  // HOW TO PLAY: optional, opened from its own button
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d', { alpha: false }); // the game paints every pixel: skip alpha compositing
   const audio = new window.TD_AUDIO.Engine();
@@ -125,7 +127,7 @@
     G.camLock = G.level.lengthPx - def.ending.camOffset;
     G.camX = G.camLock;
     audio.stopSong(true);
-    audio.endingPad(type === 'toll' || type === 'canal' || type === 'plaque' ? 'em' : type === 'map' || type === 'sign' || type === 'jet' ? 'major' : 'am');
+    audio.endingPad(type === 'toll' || type === 'canal' || type === 'plaque' ? 'em' : type === 'map' || type === 'sign' || type === 'jet' || type === 'ready' ? 'major' : 'am');
     if (type === 'truck') audio.engineStart();
     G.attemptX = null;
     G.ending = {
@@ -214,6 +216,7 @@
       case 'quit': case 'menu': if (G.state === 'paused' || G.state === 'complete') quitToMenu(); break;
       case 'fullscreen': toggleFullscreen(); break;
       case 'privacy': location.assign('privacy.html'); break;
+      case 'tutorial': if (G.state === 'menu' && TUTORIAL) startGame(TUTORIAL); break;
     }
   }
 
@@ -452,6 +455,19 @@
       }
       return;
     }
+    if (e.type === 'ready') { // the tutorial: a cheer and a send-off, no stamps
+      switch (e.phase) {
+        case 'enter':
+          e.trumpIn = 1;
+          if (t >= 0.8) { next('cheer'); audio.fanfare(); banner('YOU ARE READY'); G.stats.extra = 5; }
+          break;
+        case 'cheer':
+          if (t >= 1.8 && !e.hit1) { e.hit1 = true; banner('NOW GO ANNEX SOMETHING'); }
+          if (t >= 3.6) { next('done'); completeLevel(); }
+          break;
+      }
+      return;
+    }
     if (e.type === 'sign') {
       const sx = e.goalX + 250, sy = 175;
       switch (e.phase) {
@@ -684,6 +700,7 @@
       case 'KeyR': restartRun(); break;
       case 'KeyQ': if (G.state === 'paused' || G.state === 'complete') quitToMenu(); else if (G.state === 'calibrate') endCalibration(false); break;
       case 'KeyM': toggleMute(); break;
+      case 'KeyT': if (G.state === 'menu') uiAction('tutorial'); break;
       case 'KeyP': togglePractice(); break;
       case 'KeyF': toggleFullscreen(); break;
       case 'KeyH': G.showHitboxes = !G.showHitboxes; break;
@@ -860,7 +877,7 @@
     if (--pending > 0) return;
     if (img.naturalWidth) R.init(img, walk.naturalWidth ? walk : null);
     G.state = 'menu';
-    if (Q.has('start')) { startGame(LEVELS[G.levelIdx]); const b = parseFloat(Q.get('start')) || 0; if (b > 0) { G.attempt = 0; startAttempt(b); } }
+    if (Q.has('start')) { startGame(TUTORIAL && Q.get('level') === TUTORIAL.id ? TUTORIAL : LEVELS[G.levelIdx]); const b = parseFloat(Q.get('start')) || 0; if (b > 0) { G.attempt = 0; startAttempt(b); } }
   };
   img.onload = ready; walk.onload = ready;
   img.onerror = () => { console.error('Could not load sprite sheet'); ready(); };

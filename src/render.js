@@ -1189,6 +1189,16 @@
         if (o.skin === 'un') { ctx.save(); ctx.translate(cx, y + h / 2 + 24); ctx.rotate(-Math.PI / 2); text(ctx, 'VETO', 0, 0, `bold 14px ${TITLE_FONT}`, 'rgba(255,255,255,0.9)', 'center'); ctx.restore(); }
         break;
       }
+      case 'flipwall': { // a wall too tall to jump: the gravity portal before it is the only way past
+        ctx.fillStyle = '#c8102e'; ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = '#fff'; ctx.fillRect(x + w * 0.3, y, w * 0.16, h);
+        for (let yy = y + 30; yy < y + h - 20; yy += 60) ctx.fillRect(x, yy, w, 6);
+        ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(x + 3, y + h / 2 - 76, w - 6, 152);
+        ctx.save(); ctx.translate(x + w / 2, y + h / 2); ctx.rotate(-Math.PI / 2);
+        text(ctx, 'TAKE THE PORTAL', 0, 0, `bold 14px ${TITLE_FONT}`, '#fff', 'center', '#7a0a1a', 4); ctx.restore();
+        ctx.strokeStyle = '#4a0a12'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
+        break;
+      }
       case 'nej': {
         ctx.fillStyle = '#c8102e'; ctx.fillRect(x, y, w, h);
         ctx.fillStyle = '#fff'; ctx.fillRect(x, y + h * 0.42, w, h * 0.16); ctx.fillRect(x + w * 0.3, y, w * 0.16, h);
@@ -2078,6 +2088,7 @@
           else if (def.ending.type === 'canal') drawCanalGate(ctx, o.x - cam, G, G.ending);
           else if (def.ending.type === 'plaque') drawMoonSite(ctx, o.x - cam, G, G.ending);
           else if (def.ending.type === 'jet') drawAndrews(ctx, o.x - cam, G, G.ending);
+          else if (def.ending.type === 'ready') drawScene(ctx, 'whitehouse', o.x - cam + 250, G); // the tutorial ends on the lawn
           else drawMapBoard(ctx, o.x - cam, G, G.ending);
           break;
       }
@@ -2211,9 +2222,9 @@
         const ux = e.goalX + e.ufoX - G.camX, uy = 150 + Math.sin(G.time * 4) * 8;
         drawDrone(ctx, { cx: ux, skin: 'ufo', floorY: uy, hBase: 0, amp: 0, period: 1, phase: 0, dir: 1, r: 14 }, ux, Object.assign({}, G, { st: null, beat: 0 }));
       }
-    } else if (e.type === 'map' || e.type === 'sign' || e.type === 'canal') {
-      const cheering = e.phase === 'slide' || e.phase === 'flag' || e.phase === 'ship' || e.phase === 'done';
-      const hop = e.phase === 'slide' || e.phase === 'ship' || (e.phase === 'flag' && e.flag2Y > 0) ? Math.abs(Math.sin(G.time * 10)) * 12 : 0;
+    } else if (e.type === 'map' || e.type === 'sign' || e.type === 'canal' || e.type === 'ready') {
+      const cheering = e.phase === 'slide' || e.phase === 'flag' || e.phase === 'ship' || e.phase === 'cheer' || e.phase === 'done';
+      const hop = e.phase === 'slide' || e.phase === 'ship' || e.phase === 'cheer' || (e.phase === 'flag' && e.flag2Y > 0) ? Math.abs(Math.sin(G.time * 10)) * 12 : 0;
       drawPose(ctx, cheering ? 'cheer' : 'point', goal, GY - hop, 96, false);
     } else if (e.trumpIn > 0 && e.trumpIn < 1) {
       const p = e.trumpIn, ease = p * p * (3 - 2 * p);
@@ -2234,6 +2245,7 @@
   function uiButtons(G) {
     const b = [], s = G.state;
     if (s === 'menu') {
+      b.push({ id: 'tutorial', x: 14, y: 70, w: 142, h: 34, label: 'HOW TO PLAY', primary: true });
       b.push({ id: 'practice', x: 14, y: 110, w: 142, h: 34, label: 'PRACTICE', value: G.practice ? 'ON' : 'OFF', on: G.practice });
       b.push({ id: 'mute', x: 14, y: 150, w: 142, h: 34, label: 'SOUND', value: G.muted ? 'OFF' : 'ON', on: !G.muted });
       b.push({ id: 'sync', x: 14, y: 190, w: 142, h: 34, label: 'SYNC', value: G.offsetMs ? `${G.offsetMs > 0 ? '+' : ''}${G.offsetMs} ms` : 'AUTO', neutral: true });
@@ -2429,9 +2441,9 @@
     text(ctx, G.touch ? 'TAP A CARD TO CHOOSE A LEVEL  ·  TAP IT AGAIN TO START' : `← →  or  1–${n}  or click a card to choose a level`, W / 2 + 60, py + 26, `13px ${UI_FONT}`, '#e8e8ff', 'center', 'rgba(0,0,0,0.8)', 3);
     const lines = G.touch ? [
       'TAP — jump (hold to keep jumping)     PAUSE button top-right during a run',
-      'PRACTICE adds checkpoints. SYNC tunes tap timing: do it once with the headphones you play with.',
+      'New? HOW TO PLAY is a two-minute tutorial. PRACTICE adds checkpoints. SYNC tunes tap timing.',
     ] : [
-      'SPACE / ↑ / CLICK — jump (hold to keep jumping)',
+      'SPACE / ↑ / CLICK — jump (hold to keep jumping)     T — how to play (a two-minute tutorial)',
       'P — practice mode     M — mute     C — sync taps to the beat     ESC — pause     R — restart     F — fullscreen     H — hitboxes',
     ];
     lines.forEach((l, i) => text(ctx, l, W / 2 + 60, (grid ? 480 : 460) + i * (grid ? 17 : 20), `${grid ? 12 : 13}px ${UI_FONT}`, '#e8e8ff', 'center', 'rgba(0,0,0,0.8)', 3));
