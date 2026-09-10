@@ -2210,6 +2210,28 @@
     text(ctx, G.deathMsg, x, y, `bold 20px ${UI_FONT}`, '#fff', 'center');
   }
 
+  // Tutorial callouts: a box that holds still in the sky, between the progress bar and the ceiling,
+  // so it never covers the runner, the floor or the underside of the ice
+  function drawTips(ctx, G) {
+    if (!G.tips || !G.tips.length) return;
+    for (const t of G.tips) {
+      const tip = t.tip, age = G.time - t.t0, end = t.end != null ? t.end : t.t0 + tip.dur;
+      const a = Math.min(1, age / 0.25, Math.max(0, (end + 0.35 - G.time) / 0.35));
+      if (a <= 0) continue;
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.font = `bold 24px ${TITLE_FONT}`; const tw = ctx.measureText(tip.title).width;
+      ctx.font = `17px ${UI_FONT}`; const bw = tip.body ? ctx.measureText(tip.body).width : 0;
+      const w = Math.max(380, Math.max(tw, bw) + 60), h = tip.body ? 80 : 54;
+      const x = W / 2 + 40 - w / 2, y = 60 - (1 - Math.min(1, age / 0.25)) * 10;
+      ctx.fillStyle = 'rgba(8,10,30,0.84)'; roundRect(ctx, x, y, w, h, 12); ctx.fill();
+      ctx.strokeStyle = '#ffd400'; ctx.lineWidth = 3; roundRect(ctx, x, y, w, h, 12); ctx.stroke();
+      text(ctx, tip.title, x + w / 2, y + (tip.body ? 26 : 27), `bold 24px ${TITLE_FONT}`, '#ffd400', 'center');
+      if (tip.body) text(ctx, tip.body, x + w / 2, y + 56, `17px ${UI_FONT}`, '#ffffff', 'center');
+      ctx.restore();
+    }
+  }
+
   function drawEndingExtras(ctx, G) {
     const e = G.ending;
     if (!e) return;
@@ -2447,7 +2469,7 @@
       'P — practice mode     M — mute     C — sync taps to the beat     ESC — pause     R — restart     F — fullscreen     H — hitboxes',
     ];
     lines.forEach((l, i) => text(ctx, l, W / 2 + 60, (grid ? 480 : 460) + i * (grid ? 17 : 20), `${grid ? 12 : 13}px ${UI_FONT}`, '#e8e8ff', 'center', 'rgba(0,0,0,0.8)', 3));
-    text(ctx, 'Jumps land on the beat: listen for the clap. Parody — not affiliated with any person, government or oil company.', W / 2, H - 16, `12px ${UI_FONT}`, 'rgba(255,255,255,0.75)', 'center', 'rgba(0,0,0,0.8)', 3);
+    text(ctx, 'Jumps land on the beat: listen for the chime. Parody — not affiliated with any person, government or oil company.', W / 2, H - 16, `12px ${UI_FONT}`, 'rgba(255,255,255,0.75)', 'center', 'rgba(0,0,0,0.8)', 3);
   }
   function drawCalibrate(ctx, G) { // buttons come from uiButtons / drawButtons
     const c = G.calib;
@@ -2574,6 +2596,7 @@
     drawEndingExtras(ctx, G); t = lap('plr', t);
     drawParticles(ctx, G); t = lap('fx', t);
     drawHUD(ctx, G, pal);
+    drawTips(ctx, G);
     if (G.state === 'dead') drawDeath(ctx, G);
     if (G.state === 'paused') drawPaused(ctx, G);
     if (G.state === 'complete') drawComplete(ctx, G);

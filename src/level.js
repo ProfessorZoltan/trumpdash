@@ -254,10 +254,14 @@
       curH = 0;
     }
     function SIGN(beat, text, sub) { deco.push({ t: 'sign', x: bx(beat), text, sub }); }
+    // A callout that appears when the player reaches `beat` and holds still in the sky for `dur`
+    // seconds (the tutorial's lessons); nothing in the world, so nothing to scroll past
+    const tips = [];
+    function TIP(beat, title, body, dur) { tips.push({ x: bx(beat), title, body, dur: dur || 3.4 }); tips.sort((a, c) => a.x - c.x); }
     function SCENE(beat, kind) { deco.push({ t: 'scene', x: bx(beat), kind }); }
     function GOAL(beat) { endBeat = beat; objs.push({ t: 'goal', x: bx(beat) }); }
 
-    def.build({ S, spikeRaw, blockRaw, slabRaw, OVER, WALLJ, P, DROP, O, PAD, COIN, CEIL, MINE, MS, MINES, DRONE, GJ, GAP, FLIP, FLIPRUN, ICE, LOWG, LIFT, FLY, HOLD, GATE, FLYCOIN, FLYMINE, flyY, SIGN, SCENE, GOAL, bx, mAt, kAt, JO, B, G, CY });
+    def.build({ S, spikeRaw, blockRaw, slabRaw, OVER, WALLJ, P, DROP, O, PAD, COIN, CEIL, MINE, MS, MINES, DRONE, GJ, GAP, FLIP, FLIPRUN, ICE, LOWG, LIFT, FLY, HOLD, GATE, FLYCOIN, FLYMINE, flyY, SIGN, TIP, SCENE, GOAL, bx, mAt, kAt, JO, B, G, CY });
     if (flipped) ceilings.push({ l: ceilStart, r: bx(endBeat) + 400 });
     for (const z of zones) { z.x0 = xAtBeat(z.b0); z.x1 = xAtBeat(z.b1); }
     for (const z of lowg) { z.x0 = xAtBeat(z.b0); z.x1 = xAtBeat(z.b1); }
@@ -280,7 +284,7 @@
     ceilings.sort((a, b) => a.l - b.l);
     const jb = Array.from(new Set(jumpBeats)).sort((a, b) => a - b);
     holds.sort((a, c) => a[0] - c[0]);
-    return { def, objs, deco, gaps, ceilings, zones, lowg, fly, holds, releaseSet: new Set(releaseBeats), xAtBeat, flyStateAt, jumpBeats: jb, jumpSet: new Set(jb), endBeat, totalCoins, lengthPx: bx(endBeat) };
+    return { def, objs, deco, tips, gaps, ceilings, zones, lowg, fly, holds, releaseSet: new Set(releaseBeats), xAtBeat, flyStateAt, jumpBeats: jb, jumpSet: new Set(jb), endBeat, totalCoins, lengthPx: bx(endBeat) };
   }
 
   // A checkpoint may sit on an integer beat only if no press is required on that beat or its

@@ -56,7 +56,7 @@ a title without the name is the safer choice if the listing should survive a com
 
     HOW IT PLAYS
     • One control: tap to jump, hold to keep jumping.
-    • Every jump beat is marked in the music with an accent and a clap.
+    • Every jump beat is marked in the music with a bright chime.
     • Perfect and good timing build an on-beat combo; regular and practice records are kept
       separately per level.
     • Practice mode drops checkpoints every few bars so hard sections can be learned.

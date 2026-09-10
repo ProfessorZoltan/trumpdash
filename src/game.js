@@ -29,6 +29,7 @@
     held: false, heldAt: false, inputQ: [], beat: 0, beatPulse: 0, time: 0, camX: -C.PLAYER_X, camLock: null,
     particles: [], floaters: [], shake: 0,
     stats: null, deathMsg: null, deadAt: 0, checkpoint: 0, checkpoints: [], lastCpCheck: -1,
+    tips: [], tipIdx: 0, // active callouts and the next one to show
     ending: null, best: {}, wins: {}, pbest: {}, pwins: {}, runPractice: false, lastError: null,
   };
   for (const def of LEVELS) {
@@ -89,6 +90,8 @@
     G.state = 'playing';
     G.held = false; G.heldAt = false; G.inputQ.length = 0;
     G.particles.length = 0; G.floaters.length = 0;
+    G.tips.length = 0; G.tipIdx = 0; // callouts restart with the attempt: skip the ones behind the start
+    { const tl = G.level.tips || [], sx0 = G.level.xAtBeat(beat); while (G.tipIdx < tl.length && tl[G.tipIdx].x < sx0) G.tipIdx++; }
     G.deathMsg = null; G.ending = null; G.camLock = null; G.viewX = null; G.viewY = null;
     G.attemptX = G.level.xAtBeat(beat) + 420;
     G.beat = beat;
@@ -281,6 +284,19 @@
     }
   }
 
+  // Callouts (TIP in the level builder): one at a time; reaching the next one fades the last out
+  function showTips(st) {
+    const tl = G.level.tips;
+    if (!tl || !tl.length) return;
+    while (G.tipIdx < tl.length && tl[G.tipIdx].x <= st.x) {
+      for (const t of G.tips) if (t.end == null) t.end = G.time;
+      G.tips.push({ tip: tl[G.tipIdx++], t0: G.time, end: null });
+    }
+    for (let i = G.tips.length - 1; i >= 0; i--) {
+      const t = G.tips[i], end = t.end != null ? t.end : t.t0 + t.tip.dur;
+      if (G.time > end + 0.35) G.tips.splice(i, 1);
+    }
+  }
   function maybeCheckpoint() {
     const st = G.st;
     const ib = Math.floor(st.t / C.BEAT_SEC);
@@ -619,6 +635,7 @@
       }
       if (G.attemptX != null && st.x > G.attemptX + 400) G.attemptX = null;
       if (G.practice) maybeCheckpoint();
+      showTips(st);
       if (st.dead) onDeath();
       else if (st.finished) onFinish();
     } else if (G.state === 'dead') {

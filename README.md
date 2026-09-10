@@ -58,7 +58,7 @@ boards the jet and the button becomes thrust. **Hold to climb, release to sink**
 the ground are safe to hug. Gates of Doha towers and storm clouds, ship masts over the Atlantic,
 "ETHICS" office blocks and hanging **EMOLUMENTS CLAUSE** parchments in the storm, and the
 Washington Monument on the approach are all cut around the intended flight, so holding and
-releasing on the cues (accent + clap to hold, zap to release) flies straight through. It ends on
+releasing on the cues (the chime to hold, a zap to release) flies straight through. It ends on
 the runway at Joint Base Andrews, where the tail is stamped **AIR FORCE ONE** and then **TRUMP
 LIBRARY**, the airstair drops, and Trump gives a thumbs-up from the door.
 
@@ -82,7 +82,7 @@ returning players never run a mix of old and new modules.
 | Key | Action |
 | --- | --- |
 | ← → / 1–7 / click a card | Choose a level on the menu |
-| T, or the HOW TO PLAY button | The optional tutorial: a two-minute level that teaches taps on the clap, holding, the orb double jump, launch pads and the gravity portals, with hint death messages |
+| T, or the HOW TO PLAY button | The optional tutorial: a two-minute level that teaches taps on the chime, holding, the orb double jump, launch pads and the gravity portals; lessons are callouts that hold still in the sky, and every hazard's death message is a hint |
 | Space / ↑ / W / Enter / click / tap | Start, and jump (hold to keep jumping, like Geometry Dash). In flight: hold to climb, release to sink |
 | Esc, or the ⏸ button top-right | Pause (the pause screen has Resume / Restart / Practice / Sound / Quit buttons) |
 | R | Restart from the beginning |
@@ -167,7 +167,7 @@ and release.
 
 The music is generated live with the Web Audio API. `src/audio.js` owns the instruments and the
 16th-note scheduler; each level's file owns its arrangement. Every beat that requires a jump
-gets an accent (a bright pluck and a clap) so the track itself tells you when to press. Jumps
+gets an accent (a bright chime with a clap under it) so the track itself tells you when to press. Jumps
 within ±60 ms count as PERFECT, within ±120 ms as GOOD, and build the on-beat combo.
 
 Physics runs on the audio clock at 240 Hz, so the game stays deterministic and in sync even if
